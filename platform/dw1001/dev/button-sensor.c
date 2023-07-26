@@ -64,6 +64,24 @@ struct btn_timer
 static struct btn_timer btn_timer[BUTTONS_NUMBER];
 static int btn_state = 0;
 
+static unsigned char nrf_pin_conv(nrf_drv_gpiote_pin_t pin) {
+    int id = 0;
+
+    switch(pin) {
+        case BSP_BUTTON_0:
+            id = 0;
+            break;
+        case BSP_BUTTON_1:
+            id = 1;
+            break;
+        default:
+            // this should never happen
+            return 0;
+    }
+
+    return id;
+}
+
 /*---------------------------------------------------------------------------*/
 /**
  * \brief Button toggle handler
@@ -74,7 +92,7 @@ static int btn_state = 0;
 static void
 gpiote_event_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 {
-  int id = pin - BUTTON_START;
+  int id = nrf_pin_conv(pin);
 
   if(!timer_expired(&(btn_timer[id].debounce))) {
     return;
@@ -110,7 +128,7 @@ gpiote_event_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 static int
 config(int type, int c, nrf_drv_gpiote_pin_t pin)
 {
-  int id = pin - BUTTON_START;
+  int id = nrf_pin_conv(pin);
 
   switch(type) {
     case SENSORS_HW_INIT: {
@@ -175,12 +193,13 @@ config_button_2(int type, int value)
 static int
 value(int type, nrf_drv_gpiote_pin_t pin)
 {
+  int id = nrf_pin_conv(pin);
 
   if(type == BUTTON_SENSOR_VALUE_STATE) {
     return nrf_drv_gpiote_in_is_set(pin) == 0 ?
            BUTTON_SENSOR_VALUE_PRESSED : BUTTON_SENSOR_VALUE_RELEASED;
   } else if(type == BUTTON_SENSOR_VALUE_DURATION) {
-    return btn_timer[pin - BUTTON_START].duration;
+    return btn_timer[id].duration;
   }
 
   return 0;
@@ -218,10 +237,13 @@ value_button_2(int type)
 static int
 status(int type, nrf_drv_gpiote_pin_t pin)
 {
+
+  int id = nrf_pin_conv(pin);
+
   switch(type) {
     case SENSORS_ACTIVE:
     case SENSORS_READY:
-      return (btn_state & (1 << (pin - BUTTON_START)));
+      return (btn_state & (1 << id));
     default:
       break;
   }

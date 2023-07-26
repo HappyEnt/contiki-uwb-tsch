@@ -6,7 +6,7 @@ endif
 PLATFORM_ROOT_DIR = $(CONTIKI)/platform/$(TARGET)
 
 CONTIKI_TARGET_DIRS += . dev config
-CONTIKI_SOURCEFILES += contiki-main.c leds-arch.c # nrf52dk-sensors.c button-sensor.c
+CONTIKI_SOURCEFILES += contiki-main.c leds-arch.c nrf52dk-sensors.c button-sensor.c
 
 ifeq ($(NRF52_USE_RTT),1)
 ### Use the existing debug I/O in cpu/arm/common
@@ -30,7 +30,6 @@ endif
 ### Define the CPU directory and pull in the correct CPU makefile.
 
 NRF52_DK_REVISION=CUSTOM
-
 CONTIKI_CPU=$(CONTIKI)/cpu/nrf52832
 include $(CONTIKI_CPU)/Makefile.nrf52832
 

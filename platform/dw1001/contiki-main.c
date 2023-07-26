@@ -54,7 +54,7 @@
 #include "dev/uart0.h"
 #include "dev/lpm.h"
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if NETSTACK_CONF_WITH_IPV6
 #include "uip-debug.h"

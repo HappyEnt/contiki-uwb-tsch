@@ -86,14 +86,14 @@
  * @{
  */
 /* Notify various examples that we have Buttons */
-#define PLATFORM_HAS_BUTTON      0
+#define PLATFORM_HAS_BUTTON      1
 
 /*
  * Override button symbols from dev/button-sensor.h, for the examples that
  * include it
  */
-/* #define button_sensor button_1 */
-/* #define button_sensor2 button_2 */
+#define button_sensor  button_1
+#define button_sensor2 button_2
 
 /**
  * \brief nRF52 RTC instance to be used for Contiki clock driver.
