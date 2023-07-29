@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015, Nordic Semiconductor
+ * Copyright (c) 2018, University of Trento, Italy
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,42 +28,82 @@
  * SUCH DAMAGE.
  *
  */
+
 /**
- * \addtogroup nrf52832-dev Device drivers
+ * \addtogroup nrf52dk-devices Device drivers
  * @{
  *
- * \addtogroup nrf52832-lpm Low power mode functions
+ * \addtogroup nrf52dk-devices-temp Temperature sensor driver
+ * This is a driver for nRF52832 hardware sensor.
+ *
  * @{
  *
  * \file
- *         A header file for low power mode functions.
+ *         Temperature sensor implementation.
  * \author
  *         Wojciech Bober <wojciech.bober@nordicsemi.no>
- */
-#ifndef LPM_H
-#define LPM_H
-
-#ifdef SOFTDEVICE_PRESENT
-#include "nrf_soc.h"
-#endif
-
-/**
- * \brief Stop and wait for an event
  *
  */
-static inline void
-lpm_drop(void)
+#ifndef SOFTDEVICE_PRESENT
+#include "nrf_temp.h"
+#else
+#include "nrf_soc.h"
+#endif
+#include "contiki.h"
+#include "dev/temperature-sensor.h"
+
+
+const struct sensors_sensor temperature_sensor;
+
+/*---------------------------------------------------------------------------*/
+/**
+ * \brief Returns device temperature
+ * \param type ignored
+ * \return Device temperature in degrees Celsius
+ */
+static int
+value(int type)
 {
-#ifdef SOFTDEVICE_PRESENT
-  if(nrf_sdh_is_enabled())
-    sd_app_evt_wait();
-  else
-#endif /* SOFTDEVICE_PRESENT */
-  __WFI();
-
+#ifndef SOFTDEVICE_PRESENT
+  return nrf_temp_read();
+#else
+  int32_t temp;
+  sd_temp_get(&temp);
+  return temp >> 2;
+#endif
 }
-
-#endif /* DEV_LPM_H_ */
+/*---------------------------------------------------------------------------*/
+/**
+ * \brief Configures temperature sensor
+ * \param type initializes the hardware sensor when \a type is set to
+ *             \a SENSORS_HW_INIT
+ * \param c ignored
+ * \return 1
+ * \note  This function does nothing when SoftDevice is present
+ */
+static int
+configure(int type, int c)
+{
+#ifndef SOFTDEVICE_PRESENT
+  if (type == SENSORS_HW_INIT) {
+    nrf_temp_init();
+  }
+#endif
+  return 1;
+}
+/**
+ * \brief Return temperature sensor status
+ * \param type ignored
+ * \return 1
+ */
+/*---------------------------------------------------------------------------*/
+static int
+status(int type)
+{
+  return 1;
+}
+/*---------------------------------------------------------------------------*/
+SENSORS_SENSOR(temperature_sensor, TEMPERATURE_SENSOR, value, configure, status);
 /**
  * @}
  * @}

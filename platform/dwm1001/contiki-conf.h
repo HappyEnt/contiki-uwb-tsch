@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015, Nordic Semiconductor
+ * Copyright (c) 2018, University of Trento, Italy
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,67 +29,65 @@
  *
  */
 /**
- * \addtogroup nrf52832-dev Device drivers
+ * \addtogroup nrf52dk
  * @{
  *
- * \addtogroup nrf52832-watchdog Watchdog driver
+ * \addtogroup nrf52dk-contikic-conf Contiki configuration
  * @{
  *
  * \file
- *         Contiki compatible watchdog driver implementation.
- * \author
- *         Wojciech Bober <wojciech.bober@nordicsemi.no>
+ *  Contiki configuration for the nRF52 DK
  */
-#include <nrfx_wdt.h>
-#include "app_error.h"
-#include "contiki-conf.h"
+#ifndef CONTIKI_CONF_H
+#define CONTIKI_CONF_H
 
-static nrfx_wdt_channel_id wdt_channel_id;
-static uint8_t wdt_initialized = 0;
+#include <stdint.h>
+/*---------------------------------------------------------------------------*/
+/* Include Project Specific conf */
+#ifdef PROJECT_CONF_H
+#include PROJECT_CONF_H
+#endif /* PROJECT_CONF_H */
+/*---------------------------------------------------------------------------*/
+/* Include platform peripherals configuration */
+#include "platform-conf.h"
+/*---------------------------------------------------------------------------*/
 
+#define RADIO_DRIVER_UWB 1
+
+#include "uwb_stack_tsch.h"
+
+/*---------------------------------------------------------------------------
+inlcude file to have last_reset_reason variable
+*/
+#include "reset_reason.h"
+
+/*---------------------------------------------------------------------------
+ * RADIO STACK NOTE:
+ * here after some test are done to choose right radio stack....
+ * radio is defined with the macro
+ */
+
+/* #define XSTR(x) STR(x) */
+/* #define STR(x) #x */
+
+//if is not set deafult radio is dw1000
+/* #ifndef NETSTACK_CONF_RADIO */
+/* #define NETSTACK_CONF_RADIO dw1000_driver */
+/* #endif */
+
+/* /\*---------------------------------------------------------------------------*\/ */
+/* #include "uwb_stack.h" */
+/* /\*---------------------------------------------------------------------------*\/ */
 /**
- * \brief WDT events handler.
+ * \name Generic Configuration directives
+ *
+ * @{
  */
-static void wdt_event_handler(void)
-{
-  //TODO replace following undefined macro
-  //LEDS_OFF(LEDS_MASK);
-}
-
-static const nrfx_wdt_config_t wdt_default_config = NRFX_WDT_DEAFULT_CONFIG;
-/*---------------------------------------------------------------------------*/
-void
-watchdog_init(void)
-{
-  ret_code_t err_code;
-  err_code = nrfx_wdt_init(&wdt_default_config, &wdt_event_handler);
-  APP_ERROR_CHECK(err_code);
-  err_code = nrfx_wdt_channel_alloc(&wdt_channel_id);
-  APP_ERROR_CHECK(err_code);
-  wdt_initialized = 1;
-}
-/*---------------------------------------------------------------------------*/
-void
-watchdog_start(void)
-{
-  if(wdt_initialized) {
-    nrfx_wdt_enable();
-  }
-}
-/*---------------------------------------------------------------------------*/
-void
-watchdog_periodic(void)
-{
-  if(wdt_initialized) {
-    nrfx_wdt_channel_feed(wdt_channel_id);
-  }
-}
-/*---------------------------------------------------------------------------*/
-void
-watchdog_reboot(void)
-{
-  NVIC_SystemReset();
-}
+#ifndef ENERGEST_CONF_ON
+#define ENERGEST_CONF_ON                     1 /**< Energest Module */
+#endif
+/** @} */
+#endif /* CONTIKI_CONF_H */
 /**
  * @}
  * @}

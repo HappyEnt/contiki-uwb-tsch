@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015, Nordic Semiconductor
+ * Copyright (c) 2018, University of Trento, Italy
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,43 +28,74 @@
  * SUCH DAMAGE.
  *
  */
+
 /**
- * \addtogroup nrf52832-dev Device drivers
+ * \addtogroup platform
  * @{
  *
- * \addtogroup nrf52832-lpm Low power mode functions
+ * \addtogroup nrf52dk nRF52 Development Kit
  * @{
  *
+ * \addtogroup nrf52dk-platform-conf Platform configuration
+ * @{
  * \file
- *         A header file for low power mode functions.
+ *         Platform features configuration.
  * \author
  *         Wojciech Bober <wojciech.bober@nordicsemi.no>
- */
-#ifndef LPM_H
-#define LPM_H
-
-#ifdef SOFTDEVICE_PRESENT
-#include "nrf_soc.h"
-#endif
-
-/**
- * \brief Stop and wait for an event
+ *         Davide Molteni <davide.molteni@unitn.it>
  *
  */
-static inline void
-lpm_drop(void)
-{
-#ifdef SOFTDEVICE_PRESENT
-  if(nrf_sdh_is_enabled())
-    sd_app_evt_wait();
-  else
-#endif /* SOFTDEVICE_PRESENT */
-  __WFI();
 
-}
+/* include the platform-conf of module dwm1001 */
+#include "dwm1001-platform-conf.h"
 
-#endif /* DEV_LPM_H_ */
+/* include board definition */
+#include "dwm1001-dev-board.h"
+
+#include "nrf_gpio.h"
+
+#ifndef PLATFORM_CONF_H_
+#define PLATFORM_CONF_H_
+
+
+#define PLATFORM_HAS_BATTERY                    0
+#define PLATFORM_HAS_RADIO                      0
+#define PLATFORM_HAS_TEMPERATURE                1
+#define PLATFORM_HAS_LEDS                       1
+
 /**
- * @}
- * @}
+ * \brief If set to 1 then LED1 and LED2 are used by the
+ *        platform to indicate BLE connection state.
  */
+#define PLATFORM_INDICATE_BLE_STATE             1
+/** @} */
+
+/**
+ * \name Button configurations
+ *
+ * @{
+ */
+/* Notify various examples that we have Buttons */
+#define PLATFORM_HAS_BUTTON      1
+
+#ifndef REPLY_PLATFORM
+/* configre button's macro*/
+#define DWM1001_USER_BUTTON   2
+#define BUTTON_PULL           NRF_GPIO_PIN_PULLUP
+#define BUTTONS_ACTIVE_STATE  0
+#define DWM1001_BUTTON_MASK   (1 << DWM1001_USER_BUTTON)
+#else
+#define DWM1001_USER_BUTTON   28
+#define BUTTON_PULL           NRF_GPIO_PIN_PULLUP
+#define BUTTONS_ACTIVE_STATE  1
+#define DWM1001_BUTTON_MASK   (1 << DWM1001_USER_BUTTON)
+#endif
+
+
+/** @} */
+/*---------------------------------------------------------------------------*/
+/** @}
+ *  @}
+ *  @}
+ */
+#endif /* PLATFORM_CONF_H_ */

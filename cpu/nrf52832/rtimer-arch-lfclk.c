@@ -33,32 +33,30 @@
  *
  * \file
  *      Implementation of the architecture dependent rtimer functions for the nRF52
- *
- * \author
- *      Wojciech Bober <wojciech.bober@nordicsemi.no>
  */
+#include "contiki.h"
+/*---------------------------------------------------------------------------*/
+#include "nrf.h"
+#include "nrfx_rtc.h"
+#include "app_error.h"
 /*---------------------------------------------------------------------------*/
 #include <stdint.h>
 #include <stddef.h>
-#include "nrf.h"
-#include "nrf_drv_timer.h"
-#include "app_error.h"
-#include "contiki.h"
-#include "platform-conf.h"
 
-static const nrf_drv_timer_t timer = NRF_DRV_TIMER_INSTANCE(PLATFORM_TIMER_INSTANCE_ID); /**< Timer instance used for rtimer */
+static const nrfx_rtc_t rtc   = NRFX_RTC_INSTANCE(PLATFORM_RTIMER_RTC_INSTANCE_ID); /**< RTC instance used for platform rtimer */
+static nrfx_rtc_config_t app_rtc_config = NRFX_RTC_DEFAULT_CONFIG;
 
 /**
  * \brief Handler for timer events.
  *
  * \param event_type type of an event that should be handled
- * \param p_context opaque data pointer passed from nrf_drv_timer_init()
+ * \param p_context opaque data pointer passed from nrfx_timer_init()
  */
 static void
-timer_event_handler(nrf_timer_event_t event_type, void* p_context)
+rtc_handler(nrfx_rtc_int_type_t int_type)
 {
-  switch (event_type) {
-    case NRF_TIMER_EVENT_COMPARE1:
+  switch (int_type) {
+    case NRFX_RTC_INT_COMPARE0:
       rtimer_run_next();
       break;
 
@@ -74,9 +72,13 @@ timer_event_handler(nrf_timer_event_t event_type, void* p_context)
 void
 rtimer_arch_init(void)
 {
-  ret_code_t err_code = nrf_drv_timer_init(&timer, NULL, timer_event_handler);
+  app_rtc_config.prescaler = RTC_FREQ_TO_PRESCALER(32768);
+
+  ret_code_t err_code = nrfx_rtc_init(&rtc, &app_rtc_config, rtc_handler);
   APP_ERROR_CHECK(err_code);
-  nrf_drv_timer_enable(&timer);
+  nrfx_rtc_enable(&rtc);
+
+  // we assume that LFCLK is initialised and started in clock.c
 }
 /*---------------------------------------------------------------------------*/
 /**
@@ -91,7 +93,21 @@ rtimer_arch_init(void)
 void
 rtimer_arch_schedule(rtimer_clock_t t)
 {
-  nrf_drv_timer_compare(&timer, NRF_TIMER_CC_CHANNEL1, t, true);
+/* From nRF docs:
+ * The driver is not entering a critical section when configuring RTC, which
+ * means that it can be preempted for a certain amount of time. When the driver
+ * was preempted and the value to be set is short in time, there is a risk that
+ * the driver sets a compare value that is behind. In this case, if the
+ * reliable mode is enabled for the specified instance, the risk is handled.
+ * However, to detect if the requested value is behind, this mode makes the
+ * following assumptions:
+ * -  The maximum preemption time in ticks (8-bit value)
+ *    is known and is less than 7.7 ms (for prescaler = 0, RTC frequency 32 kHz).
+ * -  The requested absolute compare value is not bigger than
+ *    (0x00FFFFFF)-tick_latency. It is the user's responsibility to ensure
+ *    this.
+ */
+  /*nrfx_err_t err =*/ nrfx_rtc_cc_set(&rtc, 0, t & 0x00FFFFFF, true);
 }
 /*---------------------------------------------------------------------------*/
 /**
@@ -102,7 +118,7 @@ rtimer_arch_schedule(rtimer_clock_t t)
 rtimer_clock_t
 rtimer_arch_now()
 {
-  return nrf_drv_timer_capture(&timer, NRF_TIMER_CC_CHANNEL0);
+  return nrfx_rtc_counter_get(&rtc);
 }
 /*---------------------------------------------------------------------------*/
 /**

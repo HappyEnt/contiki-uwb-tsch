@@ -79,7 +79,8 @@
 #endif /* DW1000_CHANNEL */
 
 #ifndef DW1000_DATA_RATE
-#define DW1000_DATA_RATE         DW_DATA_RATE_6800_KBPS
+// default to low data rate
+#define DW1000_DATA_RATE         DW_DATA_RATE_110KBPS
 #endif /* DW1000_DATA_RATE */
 
 #ifndef DW1000_PREAMBLE
@@ -105,7 +106,7 @@
 #endif /* DW1000_ENABLE_RANGING_BIAS_CORRECTION */
 
 /* the delay induced by the SPI communication */
-#define DW1000_SPI_DELAY        50l 
+#define DW1000_SPI_DELAY        50l
 
 
 #if DW1000_IEEE802154_EXTENDED
@@ -141,7 +142,7 @@
 
 
 /* Just for the debugging of TSCH */
-#define DEBUG_GPIO_TSCH 1
+// #define DEBUG_GPIO_TSCH 0
 // #define DEBUG_GPIO_TSCH_SLEEP 1
 
 
@@ -204,7 +205,7 @@
 
 /* Time to read the current time on the DW1000 using SPI in microsecond */
 #ifndef DW1000_SFD_READOUT_OFFSET
-  #define DW1000_SFD_READOUT_OFFSET 18 
+  #define DW1000_SFD_READOUT_OFFSET 18
 #endif
 // #define DOUBLE_BUFFERING
 
@@ -220,7 +221,7 @@ static uint8_t volatile poll_mode = 0;
   static uint8_t volatile tsch_channel = 0;
 // #endif /* DW1000_TSCH */
 
-/* Used by the driver to know if the transmit() fonction 
+/* Used by the driver to know if the transmit() fonction
 have to send directly the message or if it is a delayed transmission */
 static int volatile dw1000_is_delayed_tx = 0;
 
@@ -231,9 +232,9 @@ static dw1000_frame_quality last_packet_quality;
 static uint8_t sleep_mode = RADIO_IDLE;
 
 /**
- * \brief Define a loop to wait until the success of "cond" or the expiration 
+ * \brief Define a loop to wait until the success of "cond" or the expiration
  *        of the max_time.
- * 
+ *
  * \param cond      A boolean condition
  * \param max_time  A time in micro second
  */
@@ -241,7 +242,7 @@ static uint8_t sleep_mode = RADIO_IDLE;
           BUSYWAIT_UPDATE_UNTIL("", cond, max_time)
 
 /**
- * \brief Define a loop to wait until the success of "cond" or the expiration 
+ * \brief Define a loop to wait until the success of "cond" or the expiration
  *        of the max_time.
  *
  * \param update    The update command (typically for update a register).
@@ -350,15 +351,17 @@ dw1000_driver_init(void)
 {
   PRINTF("dw1000_driver_init\r\n");
 
+  printf("initializing DW1000\r\n");
+
   dw1000_arch_init();
   dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_INIT_STATE);
 
   /* Check if SPI communication works by reading device ID */
   assert(0xDECA0130 == dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID));
-  
+
   /* Simple reset of device. */
   dw_soft_reset(); /* Need to be call with a SPI speed < 3MHz */
-  
+
   /* clear all interrupt */
   dw_clear_pending_interrupt(0x07FFFFFFFFULL);
 
@@ -378,20 +381,20 @@ dw1000_driver_init(void)
 
 #if DW1000_TSCH
   /* we configure the bitrate and the preamble length */
-  dw1000_driver_config(DW_CHANNEL_1, DW1000_DATA_RATE, DW1000_PREAMBLE, 
+  dw1000_driver_config(DW_CHANNEL_1, DW1000_DATA_RATE, DW1000_PREAMBLE,
                         DW1000_PRF);
   /* we change the channel according the default configuration */
   dw1000_driver_set_value(RADIO_PARAM_CHANNEL, (radio_value_t) DW1000_CHANNEL);
   printf("TSCH Channel %d, ", DW1000_CHANNEL);
 #else
-  dw1000_driver_config(DW1000_CHANNEL, DW1000_DATA_RATE, DW1000_PREAMBLE, 
+  dw1000_driver_config(DW1000_CHANNEL, DW1000_DATA_RATE, DW1000_PREAMBLE,
                         DW1000_PRF);
 #endif /* DW1000_TSCH */
 
-  printf("Channel %d, Data rate %d kb/s, Preamble %d, PRF %d MHz\n", 
-                (unsigned int) dw1000_conf.channel, 
-                (unsigned int) dw1000_conf.data_rate, 
-                (unsigned int) dw1000_conf.preamble_length, 
+  printf("Channel %d, Data rate %d kb/s, Preamble %d, PRF %d MHz\n",
+                (unsigned int) dw1000_conf.channel,
+                (unsigned int) dw1000_conf.data_rate,
+                (unsigned int) dw1000_conf.preamble_length,
                 (dw1000_conf.prf == 1) ? 16U : 64U);
 
   dw_disable_rx_timeout();
@@ -420,7 +423,7 @@ dw1000_driver_init(void)
 
   set_auto_ack(DW1000_CONF_AUTOACK); /* configure auto ACK */
 
-  /* If LDO tuning available then load this value */ 
+  /* If LDO tuning available then load this value */
   dw_load_ldotune();
 
   process_start(&dw1000_driver_process, NULL);
@@ -462,7 +465,7 @@ dw1000_driver_prepare(const void *payload,
   if(payload_len > 0) {
     /* Copy data to DW1000 */
     dw_write_reg(DW_REG_TX_BUFFER, payload_len, (uint8_t *)payload);
-  } 
+  }
 
 #if DEBUG_VERBOSE
   uint8_t tempRead[8];
@@ -480,7 +483,7 @@ dw1000_driver_prepare(const void *payload,
 
   // rtimer_clock_t t1 = RTIMER_NOW();
   // printf("Prepare time %ld (ms)\n", RTIMERTICKS_TO_US(t1-t0) );
-  
+
   return RADIO_TX_OK;
 }
 /**
@@ -504,6 +507,8 @@ static int
 dw1000_driver_transmit(unsigned short payload_len)
 {
 
+    printf("dw1000_driver_transmit\n");
+
 #if RADIO_DELAY_MEASUREMENT
   uint64_t transmission_call, transmission_sfd;
   transmission_call = dw_read_reg_64(DW_REG_SYS_TIME, DW_LEN_SYS_TIME);
@@ -525,7 +530,7 @@ dw1000_driver_transmit(unsigned short payload_len)
     receive_on = 1;
   }
   ENERGEST_ON(ENERGEST_TYPE_TRANSMIT);
-  
+
   if(dw1000_is_delayed_tx){
     /* wait the effective start of the transmission */
     uint64_t sys_time = 0ULL, dx_time = 0ULL;
@@ -541,7 +546,7 @@ dw1000_driver_transmit(unsigned short payload_len)
                     dw_read_reg(DW_REG_SYS_TIME, DW_LEN_SYS_TIME, (uint8_t *)&sys_time);\
                     dw_read_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, (uint8_t *)&dx_time);\
                     watchdog_periodic();,
-                    (sys_time > dx_time), 
+                    (sys_time > dx_time),
                     (5000));
     if(sys_time < dx_time){
       printf("dw1000_driver_transmit wait too long %lu\n", RADIO_TO_US(dx_time-sys_time));
@@ -557,7 +562,7 @@ dw1000_driver_transmit(unsigned short payload_len)
   /* wait the effective start of the transmission */
   uint8_t sys_ctrl_lo;
   BUSYWAIT_UPDATE_UNTIL(dw_read_subreg(DW_REG_SYS_CTRL, 0x0, 1, &sys_ctrl_lo);
-                  watchdog_periodic();, 
+                  watchdog_periodic();,
                   ((sys_ctrl_lo & DW_TXSTRT_MASK) == 0),
                   (100));
 #endif /* DEBUG */
@@ -565,25 +570,25 @@ dw1000_driver_transmit(unsigned short payload_len)
   if(DW1000_CONF_CHECKSUM) {
     payload_len += FOOTER_LEN; /* add the FCS size */
   }
-  
+
   /* wait the end of the transmission */
   /* only reads low-byte of DW1000's SYS_STATUS (bit 7 is TXFRS) */
   uint8_t sys_status_lo = 0x0;
-  uint8_t count_send = 0; 
+  uint8_t count_send = 0;
   BUSYWAIT_UPDATE_UNTIL(dw_read_subreg(DW_REG_SYS_STATUS, 0x0, 1, &sys_status_lo);
                   count_send++; watchdog_periodic();,
                   ((sys_status_lo & DW_TXFRS_MASK) != 0),
-                  theorical_transmission_approx(dw1000_conf.preamble_length, 
-                  dw1000_conf.data_rate, dw1000_conf.prf, payload_len)+ 
+                  theorical_transmission_approx(dw1000_conf.preamble_length,
+                  dw1000_conf.data_rate, dw1000_conf.prf, payload_len)+
                   DW1000_SPI_DELAY);
 
   PRINTF("Number of loop waiting IDLE: %d\n", count_idle);
   PRINTF("Number of loop waiting Tx on: %d\n", count_txtrt);
   PRINTF("Number of loop waiting Transmit Frame Sent: %d\n", count_send);
-  
+
   if((sys_status_lo & DW_TXFRS_MASK) != 0) {
 #if RADIO_DELAY_MEASUREMENT
-  dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_RAWST, DW_SUBLEN_TX_RAWST, 
+  dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_RAWST, DW_SUBLEN_TX_RAWST,
                   (uint8_t *) &transmission_sfd);
   printf("RADIO_DELAY_BEFORE_TX RTIMER %lu\n", \
             RADIO_TO_RTIMER(transmission_sfd-transmission_call));
@@ -609,7 +614,7 @@ dw1000_driver_transmit(unsigned short payload_len)
     // tx_return = RADIO_TX_OK;
   }
 
- 
+
   /* re-enable the RX state
       clean the interrupt
       and change the RX buffer*/
@@ -629,7 +634,7 @@ dw1000_driver_transmit(unsigned short payload_len)
 #if DEBUG_VERBOSE
   print_sys_status(dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS));
 #endif
-#if DEBUG 
+#if DEBUG
   if(tx_return == RADIO_TX_OK) {
     PRINTF("TX RADIO_TX_OK \r\n");
   }
@@ -676,7 +681,7 @@ void driver_flush_receive_buffer(void){
       dw_idle();
       dw_trxsoft_reset();
       dw_change_rx_buffer();
-      
+
       PRINTF("dw1000_process: RX Overrun case 2\n");
       if(receive_on)
         dw1000_on();
@@ -786,10 +791,10 @@ dw1000_driver_cca(void)
   /*
      cc2420 RSSI time 128us ~1/7812s
      dw1000 127bytes frame at 6800kps > 287us > 1/3484
-     BUSYWAIT_UNTIL((dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS) & 
+     BUSYWAIT_UNTIL((dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS) &
                       DW_RXPRD_MASK) == 0, RTIMER_SECOND / 3000);
      dw1000_driver_enable_interrupt();
-     return (dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS) & 
+     return (dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS) &
               DW_RXPRD_MASK) == 0;
    */
   return 1;
@@ -806,7 +811,7 @@ static int
 dw1000_driver_receiving_packet(void)
 {
   PRINTF("dw1000_driver_receiving_packet\r\n");
-  uint64_t sys_status = dw_read_reg_64(DW_REG_SYS_STATUS, 
+  uint64_t sys_status = dw_read_reg_64(DW_REG_SYS_STATUS,
                               DW_LEN_SYS_STATUS);
   /* return if we currently receiving a message and we don't have finish to
   receive it */
@@ -832,7 +837,7 @@ static int
 dw1000_driver_pending_packet(void)
 {
   PRINTF("dw1000_driver_pending_packet\r\n");
-  /* return true if we have have the flag "data frame ready" 
+  /* return true if we have have the flag "data frame ready"
   return (dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS) & DW_RXDFR_MASK) > 0; */
   /* Return true if we have receive a frame and the CRC is good */
   return (dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS) & DW_RXFCG_MASK) > 0;
@@ -853,7 +858,7 @@ dw1000_driver_on(void)
   uint64_t receive_call, receive_begin;
   receive_call = dw_read_reg_64(DW_REG_SYS_TIME, DW_LEN_SYS_TIME);
 #endif /* RADIO_DELAY_MEASUREMENT */
-  
+
   PRINTF("dw1000_driver_on\r\n");
   if(receive_on) {
     return 1;
@@ -885,7 +890,7 @@ dw1000_driver_on(void)
 /**
  * \brief Turn the radio on.
  * The receiver has a delay of 16μs after issuing the enable receiver command,
- *  after which it will start receiving preamble symbols. 
+ *  after which it will start receiving preamble symbols.
  */
 void
 dw1000_on(void)
@@ -902,9 +907,9 @@ dw1000_on(void)
   if(!poll_mode){
     dw1000_driver_enable_interrupt();
   }
-  
+
   /* The receiver has a delay of 16μs after issuing the enable receiver command,
-   *  after which it will start receiving preamble symbols. */ 
+   *  after which it will start receiving preamble symbols. */
   /* dw1000_us_delay(16); */
 
   ENERGEST_ON(ENERGEST_TYPE_LISTEN);
@@ -939,7 +944,7 @@ dw1000_driver_off(void)
      driver should switch off the radio once the packet has been
      received and processed, by setting the 'lock_off' variable. */
   // uint64_t status = dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS);
-  // if(((status & DW_RXSFDD_MASK) > 0) 
+  // if(((status & DW_RXSFDD_MASK) > 0)
   //   && ((status & (DW_RXDFR_MASK | DW_RXPHE_MASK)) == 0)) {
   //   lock_off = 1;
   //   return 0;
@@ -958,10 +963,10 @@ dw1000_off(void)
   receive_on = 0;
 
   ENERGEST_OFF(ENERGEST_TYPE_LISTEN);
-  /* we need to disable interrupt before the call of dw_idle() 
+  /* we need to disable interrupt before the call of dw_idle()
       because an ISR can append... */
   if(!poll_mode){
-    dw1000_driver_disable_interrupt();  
+    dw1000_driver_disable_interrupt();
     dw1000_driver_clear_pending_interrupt();
   }
 
@@ -974,14 +979,14 @@ dw1000_off(void)
   /* wait the effective TRX OFF */
   uint8_t sys_ctrl_lo;
   BUSYWAIT_UPDATE_UNTIL(dw_read_subreg(DW_REG_SYS_CTRL, 0x0, 1, &sys_ctrl_lo);
-                watchdog_periodic(); /* count_idle++; */, 
+                watchdog_periodic(); /* count_idle++; */,
                 ((sys_ctrl_lo & DW_TRXOFF_MASK) == 0),
                 (50));
 #endif /* DEBUG */
 
   if(!poll_mode){
-    dw1000_driver_enable_interrupt(); 
-  } 
+    dw1000_driver_enable_interrupt();
+  }
 }
 /**
  * \brief   Get a radio parameter value.
@@ -1148,11 +1153,11 @@ dw1000_driver_set_value(radio_param_t param, radio_value_t value)
   case RADIO_PARAM_PAN_ID:
     dw_set_pan_id(value & 0xFFFF);
     return RADIO_RESULT_OK;
-  
+
   case RADIO_PARAM_16BIT_ADDR:
     dw_set_short_addr(value & 0xFFFF);
     return RADIO_RESULT_OK;
-  
+
   case RADIO_SLEEP_STATE:
     SLEEP_SET();
     if(value == RADIO_SLEEP) {
@@ -1187,7 +1192,7 @@ dw1000_driver_set_value(radio_param_t param, radio_value_t value)
       const uint32_t agc_tune2_val = 0X2502A907UL;  /* Always use this */
       dw_write_subreg(DW_REG_AGC_CTRL, DW_SUBREG_AGC_TUNE2, DW_SUBLEN_AGC_TUNE2,
                       (uint8_t *) &agc_tune2_val);
-      
+
       #if DEBUG_LED
       dw_enable_gpio_led_from_deepsleep(); /* /!\ Increase the power consumption. */
       #endif /* DEBUG_LED */
@@ -1231,7 +1236,7 @@ dw1000_driver_set_value(radio_param_t param, radio_value_t value)
  */
 static radio_result_t
 dw1000_driver_get_object(radio_param_t param, void *dest, size_t size)
-{  
+{
   PRINTF("dw1000_driver_get_object\r\n");
 
   if(param == RADIO_PARAM_64BIT_ADDR) {
@@ -1274,7 +1279,7 @@ dw1000_driver_get_object(radio_param_t param, void *dest, size_t size)
       return RADIO_RESULT_INVALID_VALUE;
     }
 
-    dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_STAMP, DW_SUBLEN_RX_STAMP, 
+    dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_STAMP, DW_SUBLEN_RX_STAMP,
                     (uint8_t *) dest);
     return RADIO_RESULT_OK;
   }
@@ -1282,7 +1287,7 @@ dw1000_driver_get_object(radio_param_t param, void *dest, size_t size)
     if(size != sizeof(uint64_t) || !dest) {
       return RADIO_RESULT_INVALID_VALUE;
     }
-    dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_STAMP, DW_SUBLEN_TX_STAMP, 
+    dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_STAMP, DW_SUBLEN_TX_STAMP,
                     (uint8_t *) dest);
     return RADIO_RESULT_OK;
   }
@@ -1354,7 +1359,7 @@ dw1000_driver_set_object(radio_param_t param,
     if(size != 2 || !src) {
       return RADIO_RESULT_INVALID_VALUE;
     }
-    uint16_t delay = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8; 
+    uint16_t delay = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
     dw_set_tx_antenna_delay(delay);
 
     return RADIO_RESULT_OK;
@@ -1363,7 +1368,7 @@ dw1000_driver_set_object(radio_param_t param,
     if(size != 2 || !src) {
       return RADIO_RESULT_INVALID_VALUE;
     }
-    uint16_t delay = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8; 
+    uint16_t delay = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
     dw_set_rx_antenna_delay(delay);
 
     return RADIO_RESULT_OK;
@@ -1372,7 +1377,7 @@ dw1000_driver_set_object(radio_param_t param,
     if(size != 2 || !src) {
       return RADIO_RESULT_INVALID_VALUE;
     }
-    uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8; 
+    uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
     // printf("schedule %d \n", schedule);
     dw1000_schedule_tx(schedule);
 
@@ -1382,7 +1387,7 @@ dw1000_driver_set_object(radio_param_t param,
     if(size != 2 || !src) {
       return RADIO_RESULT_INVALID_VALUE;
     }
-    uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8; 
+    uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
     dw1000_schedule_tx_to_rx(schedule);
 
     return RADIO_RESULT_OK;
@@ -1391,7 +1396,7 @@ dw1000_driver_set_object(radio_param_t param,
     if(size != 2 || !src) {
       return RADIO_RESULT_INVALID_VALUE;
     }
-    uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8; 
+    uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
     dw1000_schedule_rx_to_rx(schedule);
 
     return RADIO_RESULT_OK;
@@ -1410,9 +1415,9 @@ dw1000_driver_set_object(radio_param_t param,
 /*---------------------------------------------------------------------------*/
 /**
  *
- * \brief Set a timeout value for the reception duration. 
- * Usefull when delayed reception is used to avoid listening too long 
- * if we don't receive a frame. 
+ * \brief Set a timeout value for the reception duration.
+ * Usefull when delayed reception is used to avoid listening too long
+ * if we don't receive a frame.
  * The delay is set in micro second. A value of 0 will disable this feature.
  **/
 void dw1000_rx_timeout(uint16_t timeout){
@@ -1439,7 +1444,7 @@ dw1000_driver_enable_interrupt(void)
  */
 void
 dw1000_driver_disable_interrupt(void)
-{ 
+{
   dw_enable_interrupt(0x0UL);
 }
 /**
@@ -1469,7 +1474,7 @@ set_auto_ack(uint8_t enable)
   if(enable) {
     dw_enable_automatic_ack();
     dw_config_switching_tx_to_rx_ACK(); /* Configure the Automatic ACK Turnaround Time */
-    dw_sfd_init(); /* Do a fake send to initialize the SFD. 
+    dw_sfd_init(); /* Do a fake send to initialize the SFD.
                     Required if we don't have send message before the first ACK. */
   } else {
     dw_disable_automatic_ack();
@@ -1542,8 +1547,8 @@ dw1000_driver_interrupt(void)
     /* RNG bit is the 15nd bit */
     dw_read_subreg(DW_REG_RX_FINFO, 0x0, 4, (uint8_t* ) &value);
     uint16_t payload_len =dw_get_rx_extended_len();
-    printf("rx_info %04X%04X, frame length %d, sys_status %04X%04X\n", (unsigned int) (value >> 16), 
-    (unsigned int) value, payload_len,  (unsigned int) (status >> 16), 
+    printf("rx_info %04X%04X, frame length %d, sys_status %04X%04X\n", (unsigned int) (value >> 16),
+    (unsigned int) value, payload_len,  (unsigned int) (status >> 16),
     (unsigned int) status);
     print_sys_status(status);
 
@@ -1603,17 +1608,17 @@ PROCESS_THREAD(dw1000_driver_process, ev, data){
 
           dw1000_update_frame_quality();
 
-          /* end of the interrupt */ 
+          /* end of the interrupt */
           /* See Figure 14: Flow chart for using double RX buffering
            * Of the manual */
 #ifdef DOUBLE_BUFFERING
           status = dw_read_reg_64( DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS);
           if((status & DW_RXOVRR_MASK) > 0){ /* overrun may be occurs */
-                  
+
             dw_idle();
             dw_trxsoft_reset();
             dw_change_rx_buffer();
-            
+
             PRINTF("dw1000_process: RX Overrun case 2\n");
             if(receive_on)
               dw1000_on();
@@ -1625,9 +1630,9 @@ PROCESS_THREAD(dw1000_driver_process, ev, data){
             dw_change_rx_buffer();
 #endif /* DOUBLE_BUFFERING */
             packetbuf_set_datalen(len);
-        
+
             PRINTF("dw1000_process: length %i\r\n", len);
-            
+
             NETSTACK_RDC.input();
 
             dw_clear_pending_interrupt(DW_MRXFCE_MASK
@@ -1640,7 +1645,7 @@ PROCESS_THREAD(dw1000_driver_process, ev, data){
 #endif /* DOUBLE_BUFFERING */
         }
         else{
-          /* we have receive an ACK 
+          /* we have receive an ACK
             We just swap the buffer */
 #ifdef DOUBLE_BUFFERING
           if(dw_good_rx_buffer_pointer()){
@@ -1656,7 +1661,7 @@ PROCESS_THREAD(dw1000_driver_process, ev, data){
 #endif /* DOUBLE_BUFFERING */
           PRINTF("interrupt ACK\n");
         }
-      } else{ 
+      } else{
         /**
          * Bad CRC, drop the packet > no read
          * Change the buffer pointer.
@@ -1673,7 +1678,7 @@ PROCESS_THREAD(dw1000_driver_process, ev, data){
                  | DW_MLDEDONE_MASK);
         dw_init_rx();
 #endif /* DOUBLE_BUFFERING */
-        printf("dw1000_process: bad CRC\n\r"); 
+        printf("dw1000_process: bad CRC\n\r");
       }
       PRINTF("dw interrupt message\n");
       /* Read status register for the next iteration */
@@ -1710,13 +1715,13 @@ PROCESS_THREAD(dw1000_driver_process, ev, data){
  *                  At 6800 kbps: 128 if data, 256 if ranging.
  * \param dw1000_prf_t The wiched pulse repetition frequency.
  *                  DW_PRF_16_MHZ is best for data.
- *                  DW_PRF_64_MHZ is best for ranging: improve the first 
+ *                  DW_PRF_64_MHZ is best for ranging: improve the first
  *                  path detection, but increase the power consumption.
  *
  */
 void
-dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate, 
-                      dw1000_preamble_length_t preamble_length, 
+dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate,
+                      dw1000_preamble_length_t preamble_length,
                       dw1000_prf_t prf)
 {
   dw1000_conf.prf = prf;
@@ -1750,13 +1755,13 @@ dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate,
   //   dw_set_snif_mode(1, 3, dw1000_conf.pac_size*3);
   // }
   // if(preamble_length == 256){
-  //    // bug fix: improve ranging reliability at 6.8 Mbps 
+  //    // bug fix: improve ranging reliability at 6.8 Mbps
   //   dw1000_conf.pac_size = DW_PAC_SIZE_8;
   // }
 
   if(data_rate == DW_DATA_RATE_110_KBPS) {
     /* 64 symbols */
-    dw1000_conf.sfd_type = DW_SFD_NON_STANDARD;  
+    dw1000_conf.sfd_type = DW_SFD_NON_STANDARD;
   } else if(data_rate == DW_DATA_RATE_850_KBPS) {
     /* 16 symbols */
     dw1000_conf.sfd_type = DW_SFD_NON_STANDARD;
@@ -1778,6 +1783,7 @@ dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate,
  **/
 void
 dw1000_set_tsch_channel(uint8_t channel){
+    printf("dw1000_set_tsch_channel %d\n", channel);
   switch(channel){
     case 0:
       dw1000_conf.channel = DW_CHANNEL_1;
@@ -1838,7 +1844,7 @@ dw1000_set_tsch_channel(uint8_t channel){
   }
   else{ /* at 6.8 mbps we use smart tx power (increase the tx power) */
     dw_set_smart_tx_power(dw1000_conf.channel, dw1000_conf.prf);
-  }  
+  }
   #else
     dw_set_manual_tx_power(dw1000_conf.channel, dw1000_conf.prf);
   #endif /* UWB_SMART_TX_POWER */
@@ -1859,7 +1865,7 @@ dw1000_set_tsch_channel(uint8_t channel){
 dw1000_preamble_code_t
 dw1000_get_preamble_code(dw1000_channel_t channel, dw1000_prf_t prf){
   dw1000_preamble_code_t preamble_code;
-  /* we define the preamble code to get the smallest the channel interference 
+  /* we define the preamble code to get the smallest the channel interference
     radius according to the APH010 of DecaWave (section 5). */
   if(channel == DW_CHANNEL_1) {
     preamble_code = DW_PREAMBLE_CODE_1;
@@ -1903,19 +1909,19 @@ get_sfd_timestamp(uint32_t reg_addr)
   uint32_t current_mcu_time;
 
   current_mcu_time = RTIMER_NOW();
-  
+
   // SEND_SET();
-  /* we use the DW1000 clock, We don't clean the 9 low bit because 
+  /* we use the DW1000 clock, We don't clean the 9 low bit because
     RADIO_TO_RTIMER do this job. */
   sys_time = dw_read_reg_64(DW_REG_SYS_TIME, DW_LEN_SYS_TIME);
   // SEND_CLR();
 
   if(reg_addr == DW_REG_RX_TIME){
-    dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_RAWST, DW_SUBLEN_RX_RAWST, 
+    dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_RAWST, DW_SUBLEN_RX_RAWST,
                     (uint8_t *) &sfd_time);
   }
   else{
-    dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_RAWST, DW_SUBLEN_TX_RAWST, 
+    dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_RAWST, DW_SUBLEN_TX_RAWST,
                     (uint8_t *) &sfd_time);
   }
 
@@ -1927,8 +1933,8 @@ get_sfd_timestamp(uint32_t reg_addr)
     sfd_delay = sys_time - sfd_time;
   }
   else {
-    /* we have an overflow. To compute the delay we have to take the maximum 
-    timestamps value into account (because this is a 40 bits number and 
+    /* we have an overflow. To compute the delay we have to take the maximum
+    timestamps value into account (because this is a 40 bits number and
     we use 64 bits number). */
     sfd_delay = sys_time + DW_TIMESTAMP_MAX_VALUE - sfd_time;
   }
@@ -1939,9 +1945,9 @@ get_sfd_timestamp(uint32_t reg_addr)
   printf("SYS_TIME %llu\n", sys_time);
   printf("RX_TIME %llu\n", sfd_time);
   printf("sfd_delay %llu\n", sfd_delay);
-  printf("RTIMER_ARCH_SECOND / DW_TIMESTAMP_CLOCK %d %d\n", 
+  printf("RTIMER_ARCH_SECOND / DW_TIMESTAMP_CLOCK %d %d\n",
                             RTIMER_ARCH_SECOND,  DW_TIMESTAMP_CLOCK);
-  printf("RADIO_TO_RTIMER(sfd_delay) %lu %lu\n", RADIO_TO_RTIMER(sfd_delay), 
+  printf("RADIO_TO_RTIMER(sfd_delay) %lu %lu\n", RADIO_TO_RTIMER(sfd_delay),
     RTIMERTICKS_TO_US(RADIO_TO_RTIMER(sfd_delay)));
 #endif /*  DEBUG_VERBOSE */
 
@@ -1952,19 +1958,19 @@ get_sfd_timestamp(uint32_t reg_addr)
 /*===========================================================================*/
 
 /**
- * \brief Based on the delay (in us) and the RX timestamps, this function schedule 
+ * \brief Based on the delay (in us) and the RX timestamps, this function schedule
  *        the ranging reply message.
- * 
+ *
  * NOTE: The transceiver need to be in IDLE when invocking a delayed transmition.
  */
-void 
+void
 dw1000_schedule_tx(uint16_t delay_us)
 {
   uint64_t schedule_time = dw_get_rx_timestamp();
   /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
   schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
   /* The 10nd bit have a "value" of 125Mhz */
-  schedule_time = schedule_time + US_TO_RADIO(delay_us); 
+  schedule_time = schedule_time + US_TO_RADIO(delay_us);
 
   dw_set_dx_timestamp(schedule_time);
   // printf("schedule tx time %llu\n", (schedule_time-(dw_get_rx_timestamp()&DW_TIMESTAMP_CLEAR_LOW_9)));
@@ -1974,7 +1980,7 @@ dw1000_schedule_tx(uint16_t delay_us)
 }
 
 /**
- * \brief Configures the DW1000 to be ready to receive a ranging response 
+ * \brief Configures the DW1000 to be ready to receive a ranging response
  *          based on the lasted sended messages. The delay is in micro seconds.
  *        /!\ Private function.
  */
@@ -1994,7 +2000,7 @@ dw1000_schedule_tx_to_rx(uint16_t delay_us)
 }
 
 /**
- * \brief Configures the DW1000 to be ready to receive a ranging response 
+ * \brief Configures the DW1000 to be ready to receive a ranging response
  *          based on the lasted reiceived messages. The delay is in micro seconds.
  *        /!\ Private function.
  */
@@ -2017,7 +2023,7 @@ dw1000_schedule_rx_to_rx(uint16_t delay_us)
 /**
  * \brief Update the quality information about the last packet received.
  */
-void 
+void
 dw1000_update_frame_quality(void){
   dw_get_receive_quality(&last_packet_quality);
 }
@@ -2035,19 +2041,19 @@ dw1000_driver_get_packet_quality(void){
 /* Chorus                                                                    */
 /*===========================================================================*/
 /**
- * \brief Based on the delay (in decawave unit) and the RX timestamps, this function schedule 
+ * \brief Based on the delay (in decawave unit) and the RX timestamps, this function schedule
  *        the ranging reply message.
- * 
+ *
  * NOTE: The transceiver need to be in IDLE when invocking a delayed transmition.
  */
-void 
+void
 dw1000_schedule_tx_chorus(uint64_t delay)
 {
   uint64_t schedule_time = dw_get_rx_timestamp();
   /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
   schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
   /* The 10nd bit have a "value" of 125Mhz */
-  schedule_time = schedule_time + delay; 
+  schedule_time = schedule_time + delay;
 
   dw_set_dx_timestamp(schedule_time);
   // printf("schedule tx time %llu\n", (schedule_time-(dw_get_rx_timestamp()&DW_TIMESTAMP_CLEAR_LOW_9)));

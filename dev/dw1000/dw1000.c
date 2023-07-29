@@ -168,12 +168,12 @@ dw1000_init()
  *
  * Configuration of the Automatic ACK Turnaround Time (ACK_TIM).
  * DecaWave recommend a min value of 0 at 110 kbps, 2 at 850 kbps and
- * 3 at 6800 kbps [ACK_TIM field]. 
- * But the IEEE 802.15.4 standard specifies a 12 symbol +/- 0.5 symbols 
- * turnaround time for ACK transmission [5.3.2 Automatic Receiver Re-Enable]. 
+ * 3 at 6800 kbps [ACK_TIM field].
+ * But the IEEE 802.15.4 standard specifies a 12 symbol +/- 0.5 symbols
+ * turnaround time for ACK transmission [5.3.2 Automatic Receiver Re-Enable].
  * We choose therefore a ACK_TIM of 12 symbols.
  *
- * The Wait-for-Response turn-around Time is set a lower value of ACK_TIM to 
+ * The Wait-for-Response turn-around Time is set a lower value of ACK_TIM to
  * avoid loss of symbol.
  */
 void
@@ -258,18 +258,18 @@ void
 dw_turn_frame_filtering_on(void)
 {
   uint32_t frameFilteringData = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
-  PRINTF("Reading frameFilteringData:  0x%08X\r\n",  
+  PRINTF("Reading frameFilteringData:  0x%08X\r\n",
               (unsigned long long)  frameFilteringData);
 
   frameFilteringData &= 0xFFFFFE00;   /* Clear Filtering bit */
   frameFilteringData |= DW_FFEN_MASK; /* Frame Filtering Enable. */
-  frameFilteringData |= DW_FFBC_MASK; /* Frame Filtering Behave as a 
+  frameFilteringData |= DW_FFBC_MASK; /* Frame Filtering Behave as a
                                           Coordinator. */
-  frameFilteringData |= DW_FFAB_MASK; /* Frame Filtering Allow Beacon frame 
+  frameFilteringData |= DW_FFAB_MASK; /* Frame Filtering Allow Beacon frame
                                           reception. */
-  frameFilteringData |= DW_FFAD_MASK; /* Frame Filtering Allow Data frame 
+  frameFilteringData |= DW_FFAD_MASK; /* Frame Filtering Allow Data frame
                                           reception. */
-  frameFilteringData |= DW_FFAA_MASK; /* Frame Filtering Allow Acknowledgment 
+  frameFilteringData |= DW_FFAA_MASK; /* Frame Filtering Allow Acknowledgment
                                           frame reception. */
   frameFilteringData |= DW_FFAM_MASK; /* Frame Filtering Allow MAC command frame
                                           reception. */
@@ -280,7 +280,7 @@ dw_turn_frame_filtering_on(void)
 
 #if DEBUG
   frameFilteringData = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
-  PRINTF("Reading new frameFilteringData: %08x\r\n", frameFilteringData); 
+  PRINTF("Reading new frameFilteringData: %08x\r\n", frameFilteringData);
 #endif /* DEBUG */
 
 }
@@ -295,7 +295,7 @@ dw_turn_frame_filtering_off(void)
   uint32_t frameFilteringData = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
   /* switch all filtering off and disable filtering */
   /* switch it all off */
-  frameFilteringData &= ~(DW_CFG_FF_ALL_EN | DW_FFEN_MASK); 
+  frameFilteringData &= ~(DW_CFG_FF_ALL_EN | DW_FFEN_MASK);
   dw_write_reg(DW_REG_SYS_CFG, DW_LEN_SYS_CFG, (uint8_t *) &frameFilteringData);
 }
 /**
@@ -322,7 +322,7 @@ dw_disable_receive_abort_on_RSD_error(void)
   uint32_t sys_cfg = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
   /* switch all filtering off and disable filtering */
   /* switch it all off */
-  sys_cfg |= DW_DIS_RSDE_MASK; 
+  sys_cfg |= DW_DIS_RSDE_MASK;
   dw_write_reg(DW_REG_SYS_CFG, DW_LEN_SYS_CFG, (uint8_t *) &sys_cfg);
 }
 
@@ -338,7 +338,7 @@ dw_enable_receive_abort_on_RSD_error(void)
   uint32_t sys_cfg = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
   /* switch all filtering off and disable filtering */
   /* switch it all off */
-  sys_cfg &= ~(DW_DIS_RSDE | DW_DIS_RSDE_MASK); 
+  sys_cfg &= ~(DW_DIS_RSDE | DW_DIS_RSDE_MASK);
   dw_write_reg(DW_REG_SYS_CFG, DW_LEN_SYS_CFG, (uint8_t *) &sys_cfg);
 }
 
@@ -374,7 +374,7 @@ dw_disable_extended_frame(void)
  * Re-enable LED blink mode after deepsleep.
  *
  * LED wil blink with a lower intensity if the wakeup period is short.
- * For exemple with a wakeup duration of 3 ms, the led only stay on for 3 ms 
+ * For exemple with a wakeup duration of 3 ms, the led only stay on for 3 ms
  * in place of 20 ms.
  */
 void
@@ -389,7 +389,7 @@ dw_enable_gpio_led_from_deepsleep(void)
 
   /* active blinking mode */
   /* BLINK_TIM fiedl is 16 bits long */
-  data = (0xF << DW_BLINK_TIM) & DW_BLINK_TIM_MASK; /* blink time to 20 ms 
+  data = (0xF << DW_BLINK_TIM) & DW_BLINK_TIM_MASK; /* blink time to 20 ms
                                                         (default 400 ms) */
 
   // dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, 2, (uint8_t *) &data);
@@ -404,7 +404,7 @@ dw_enable_gpio_led(void)
 {
   uint32_t data = 0UL;
   /* set GPIO to LED */
-  data = dw_read_subreg_32(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE, 
+  data = dw_read_subreg_32(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE,
                             DW_SUBLEN_GPIO_MODE);
   data |= (1UL << DW_MSGP0) & DW_MSGP0_MASK; /* set GPIO0 as the RXOKLED
                                                   output. */
@@ -414,33 +414,33 @@ dw_enable_gpio_led(void)
                                                   output. */
   data |= (1UL << DW_MSGP3) & DW_MSGP3_MASK; /* set GPIO3 as the TXLED
                                                   output. */
-  dw_write_subreg(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE, DW_SUBLEN_GPIO_MODE, 
+  dw_write_subreg(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE, DW_SUBLEN_GPIO_MODE,
                   (uint8_t *)&data);
   /* required: see manual p.182 */
-  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, 
+  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0,
                             DW_SUBLEN_PMSC_CTRL0);
   data |= (1UL << DW_GPDCE) & DW_GPDCE_MASK; /* GPIO De-bounce Clock Enable. */
   data |= (1UL << DW_KHZCLKEN) & DW_KHZCLKEN_MASK; /* Kilohertz clock Enable. */
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&data);
 
   /* active blinking mode */
-  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, 
+  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC,
                             DW_SUBLEN_PMSC_LEDC);
   data |= (1UL << DW_BLNKEN) & DW_BLNKEN_MASK; /* enable blink mode */
-  data |= (0xFUL << DW_BLNKNOW) & DW_BLNKNOW_MASK; /* force LEDs to blink 
+  data |= (0xFUL << DW_BLNKNOW) & DW_BLNKNOW_MASK; /* force LEDs to blink
                                                       once */
   data &= ~DW_BLINK_TIM_MASK; /* set Blink time count value to 0 */
-  data |= (0xF << DW_BLINK_TIM) & DW_BLINK_TIM_MASK; /* blink time to 20 ms 
+  data |= (0xF << DW_BLINK_TIM) & DW_BLINK_TIM_MASK; /* blink time to 20 ms
                                                         (default 400 ms) */
 
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, DW_SUBLEN_PMSC_LEDC, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, DW_SUBLEN_PMSC_LEDC,
                   (uint8_t *)&data);
 
   /* reset force blink bits. Needed to make the LEDs blinking */
-  data &= ~((0xFUL << DW_BLNKNOW) & DW_BLNKNOW_MASK); 
+  data &= ~((0xFUL << DW_BLNKNOW) & DW_BLNKNOW_MASK);
 
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, DW_SUBLEN_PMSC_LEDC, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, DW_SUBLEN_PMSC_LEDC,
                   (uint8_t *)&data);
 }
 /**
@@ -453,46 +453,46 @@ dw_disable_gpio_led(void)
 {
   uint32_t data = 0UL;
   /* set GPIO to LED */
-  data = dw_read_subreg_32(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE, 
+  data = dw_read_subreg_32(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE,
                             DW_SUBLEN_GPIO_MODE);
   data &= ~DW_MSGP0_MASK; /* reset GPIO0 */
   data &= ~DW_MSGP1_MASK; /* reset GPIO1 */
   data &= ~DW_MSGP2_MASK; /* reset GPIO2 */
   data &= ~DW_MSGP3_MASK; /* reset GPIO3. */
-  dw_write_subreg(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE, DW_SUBLEN_GPIO_MODE, 
+  dw_write_subreg(DW_REG_GPIO_CTRL, DW_SUBREG_GPIO_MODE, DW_SUBLEN_GPIO_MODE,
                   (uint8_t *)&data);
 
   /* required: see manual p.182 */
-  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, 
+  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0,
                             DW_SUBLEN_PMSC_CTRL0);
   data &= ~DW_GPDCE_MASK; /* reset GPIO De-bounce Clock. */
   data &= ~DW_KHZCLKEN_MASK; /* reset Kilohertz clock. */
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&data);
 
   /* disable blinking mode */
-  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, 
+  data = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC,
                             DW_SUBLEN_PMSC_LEDC);
   data &= ~DW_BLNKEN_MASK; /* reset blink mode */
   data &= ~DW_BLNKNOW_MASK; /* force LEDs to blink once */
   data &= ~DW_BLINK_TIM_MASK; /* reset Blink time count value */
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, DW_SUBLEN_PMSC_LEDC, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_LEDC, DW_SUBLEN_PMSC_LEDC,
                   (uint8_t *)&data);
 }
 /**
- * \brief Set a SFD timeout value. This is used to abort a reception when a 
- *        preamble is detected but not a SFD. 
+ * \brief Set a SFD timeout value. This is used to abort a reception when a
+ *        preamble is detected but not a SFD.
  *        With more details: The SFD detection timeout starts running as soon as
- *        preamble is detected. If the SFD sequence is not detected before the 
- *        timeout period expires then the timeout will act to abort the 
+ *        preamble is detected. If the SFD sequence is not detected before the
+ *        timeout period expires then the timeout will act to abort the
  *        reception currently in progress.
  *
  * \param value the SFD timeout value (expressed in preamble symbol).
  *
- *        The value is set in function of the configuration (preamble length 
+ *        The value is set in function of the configuration (preamble length
  *        and data rate).
  *
- *        Example of value (from 
+ *        Example of value (from
  *        https://github.com/damaki/DW1000/wiki/Configuring-the-DW1000)
  *        Expected Rx Preamble Length   Data Rate     Recommended SFD Timeout
  *          64                            110 kbps      64 + 64 + 1
@@ -502,9 +502,9 @@ dw_disable_gpio_led(void)
  *          1024                          850 kbps      1024 + 8 + 1
  *          4096                          6.8 Mbps      4096 + 8 + 1
  *
- *      /!\ Please do NOT set DRX_SFDTOC to zero (disabling SFD detection 
- *          timeout). With the SFD timeout disabled and in the event of false 
- *          preamble detection, the IC will remain in receive mode until 
+ *      /!\ Please do NOT set DRX_SFDTOC to zero (disabling SFD detection
+ *          timeout). With the SFD timeout disabled and in the event of false
+ *          preamble detection, the IC will remain in receive mode until
  *          commanded to do otherwise by the external micro-controller. This can
  *          lead to significant reduction in battery life.
  *      ==> If you set a value of 0 this value will replace by the default value
@@ -514,11 +514,11 @@ void
 dw_set_sfd_timeout(uint16_t value){
   if(value == 0)
     value = 4096+64+1;
-  dw_write_subreg(DW_REG_DRX_CONF, DW_SUBREG_DRX_SFDTOC, DW_SUBLEN_DRX_SFDTOC, 
+  dw_write_subreg(DW_REG_DRX_CONF, DW_SUBREG_DRX_SFDTOC, DW_SUBLEN_DRX_SFDTOC,
                       (uint8_t *) &value);
 }
 /* \brief SFD initialization: This can be done by writing to the system control
- * Control Register with both the transmission start-bit TXSTRT and the 
+ * Control Register with both the transmission start-bit TXSTRT and the
  * transceiver off bit TRXOFF set at the same time. [5.3.1.2 SFD Initialization]
  */
 void
@@ -527,14 +527,14 @@ dw_sfd_init(void){
   dw_read_reg(DW_REG_SYS_CTRL, DW_LEN_SYS_CTRL, (uint8_t *)&sys_ctrl);
   sys_ctrl |= DW_TXSTRT_MASK | DW_TRXOFF_MASK;
   dw_write_reg(DW_REG_SYS_CTRL, DW_LEN_SYS_CTRL, (uint8_t *)&sys_ctrl);
-  /* bits are automatically clear by the transceiver */ 
+  /* bits are automatically clear by the transceiver */
 }
 /**
- * \brief Force the load of the LDE code from the ROM memory to the RAM memory 
- *    to be able to compute correctly the timestamps. 
+ * \brief Force the load of the LDE code from the ROM memory to the RAM memory
+ *    to be able to compute correctly the timestamps.
  *  See LDELOAD in the manual (Table 4)
  *    /!\ Warning:
- *    Ensure that the SPI operating frequency is set < 3MHz. 
+ *    Ensure that the SPI operating frequency is set < 3MHz.
  *    (During procedure the system uses the 19.2 MHz XTI clock which will
  *    not support higher SPI data rates)
  */
@@ -567,7 +567,7 @@ dw_active_lde_on_wakeup(void){
 /**
  * \brief Apply a soft reset
  *    /!\ Warning:
- *    Ensure that the SPI operating frequency is set < 3MHz. 
+ *    Ensure that the SPI operating frequency is set < 3MHz.
  *    (During procedure the system uses the 19.2 MHz XTI clock which will
  *    not support higher SPI data rates)
  */
@@ -576,31 +576,31 @@ dw_soft_reset(void)
 {
   /* Set SYSCLKS to 01 > Force system clock to be the 19.2 MHz XTI clock. */
   uint32_t ctrlReg = 0UL;
-  dw_read_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_read_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                  (uint8_t *)&ctrlReg);
   ctrlReg &= ~DW_SYSCLKS_MASK;
   ctrlReg |= (0x01 << DW_SYSCLKS) & DW_SYSCLKS_MASK;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&ctrlReg);
 
   /* Clear SOFTRESET >> all zeros */
   ctrlReg &= ~DW_SOFTRESET_MASK;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&ctrlReg);
 
-  /* Source: 10us sleep : 
+  /* Source: 10us sleep :
    * https://github.com/lab11/dw1000-driver/blob/master/deca_device.c
-   * The DW1000 needs a 10us sleep to let clk PLL lock after reset - 
+   * The DW1000 needs a 10us sleep to let clk PLL lock after reset -
    * the PLL will automatically lock after the reset */
   dw1000_us_delay(10);
 
   /* Set SOFTRESET to all ones */
   ctrlReg |= DW_SOFTRESET_MASK; /* Set SOFTRESET to all ones */
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&ctrlReg);
 
   ctrlReg &= ~DW_SYSCLKS_MASK; /* Set SYSCLKS to 00 > Auto system clock. */
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&ctrlReg);
 
   dw_idle(); /* force to idle */
@@ -691,7 +691,7 @@ void dw_set_channel(dw1000_channel_t channel){
   uint32_t fs_pllcfg_val = 0UL;
   /* Frequency synthesiser – PLL Tuning */
   uint8_t fs_plltune_val = 0;
-  
+
   /* === Configure rx/tx channel */
   uint8_t channelNum = ((uint8_t)channel & 0xF);
   chan_ctrl_val |= (channelNum << DW_TXCHAN) & DW_TXCHAN_MASK;
@@ -757,7 +757,7 @@ void dw_set_channel(dw1000_channel_t channel){
                   (uint8_t *) &fs_plltune_val);
 }
 /**
- * \brief Configure the transceiver according to the PRF. 
+ * \brief Configure the transceiver according to the PRF.
  **/
 void
 dw_set_prf(dw1000_prf_t prf){
@@ -770,12 +770,12 @@ dw_set_prf(dw1000_prf_t prf){
   /* Digital Receiver Configuration Tuning Register 1a */
   uint16_t drx_tune1a_val;
 
-  /* we focus on the PRF bits : TXPRF (bit 16 and 17). Thus we only touch the 
+  /* we focus on the PRF bits : TXPRF (bit 16 and 17). Thus we only touch the
   3nd byte */
   dw_read_subreg(DW_REG_TX_FCTRL, 2, 1, (uint8_t *)&tx_fctrl_val);
   tx_fctrl_val &= ~(DW_TXPRF_MASK >> 16);
 
-  /* we focus on the PRF bits : RXPRF (bit 18 and 19). Thus we only touch the 
+  /* we focus on the PRF bits : RXPRF (bit 18 and 19). Thus we only touch the
   3nd byte */
   dw_read_subreg(DW_REG_CHAN_CTRL, 2, 1, (uint8_t *)&chan_ctrl_val);
   chan_ctrl_val &= ~(DW_RXPRF_MASK >> 16);
@@ -805,7 +805,7 @@ dw_set_prf(dw1000_prf_t prf){
 }
 
 /**
- * \Brief Configure the transceiver according to the preamble length 
+ * \Brief Configure the transceiver according to the preamble length
  **/
 void
 dw_set_preamble_length(dw1000_preamble_length_t preamble_length){
@@ -819,22 +819,22 @@ dw_set_preamble_length(dw1000_preamble_length_t preamble_length){
 
   if(preamble_length == DW_PREAMBLE_LENGTH_64) {
     drx_tune1b_val = 0x0010;
-  } 
+  }
   else if(preamble_length <= DW_PREAMBLE_LENGTH_1024) {
     drx_tune1b_val = 0x0020;
-  } 
+  }
   else if(preamble_length > DW_PREAMBLE_LENGTH_1024) {
     drx_tune1b_val = 0x0064;
   }
 
   if(preamble_length == DW_PREAMBLE_LENGTH_64) {
     drx_tune4h_val = 0x0010;
-  } 
+  }
   else {
     drx_tune4h_val = 0x0028;
   }
-  
-  /* we focus on the TXPSR bits (bit 18 and 19) and PE (20 and 21) 
+
+  /* we focus on the TXPSR bits (bit 18 and 19) and PE (20 and 21)
   Thus we only touch the 3nd and 4nd byte */
   dw_read_subreg(DW_REG_TX_FCTRL, 2, 2, (uint8_t *)&tx_fctrl_val);
   tx_fctrl_val &= ~(DW_TXPSR_MASK >> 16);
@@ -896,9 +896,9 @@ dw_set_preamble_code(dw1000_preamble_code_t preamble_code){
   chan_ctrl_val &= ~(DW_TX_PCODE_MASK >> 16);
   chan_ctrl_val &= ~(DW_RX_PCODE_MASK >> 16);
 
-  chan_ctrl_val |= (((uint32_t) preamble_code) << (DW_TX_PCODE - 16)) 
+  chan_ctrl_val |= (((uint32_t) preamble_code) << (DW_TX_PCODE - 16))
                     & (DW_TX_PCODE_MASK >> 16);
-  chan_ctrl_val |= (((uint32_t) preamble_code) << (DW_RX_PCODE - 16)) 
+  chan_ctrl_val |= (((uint32_t) preamble_code) << (DW_RX_PCODE - 16))
                     & (DW_RX_PCODE_MASK >> 16);
 
   dw_write_subreg(DW_REG_CHAN_CTRL, 2, 2, (uint8_t *)&chan_ctrl_val);
@@ -933,28 +933,28 @@ dw_set_datarate_and_sfd(dw1000_data_rate_t data_rate, dw1000_sfd_type_t sfd_type
     break;
   case DW_SFD_NON_STANDARD:
     chan_ctrl_val |= (1UL << (DW_DWSFD - 16)) & (DW_DWSFD_MASK >> 16); /* use DW ns SFD */
-    /* The user manual specify that TNSSFD and RNSSFD are ignored when DWSFD 
+    /* The user manual specify that TNSSFD and RNSSFD are ignored when DWSFD
         is set but the receiver do not detect message without theses tow bits */
     chan_ctrl_val |= (DW_TNSSFD_MASK >> 16);
     chan_ctrl_val |= (DW_RNSSFD_MASK >> 16);
     break;
   case DW_SFD_USER_SPECIFIED:
-    /* Not implemented yet! */  
+    /* Not implemented yet! */
     DW_ERROR("dw_conf - SFD: User specified SFD not implemented");
     break;
   }
 
   /* We need to specify the length for the non-standard SFD. */
   if(sfd_type == DW_SFD_NON_STANDARD){
-    /* This value must be set only for data rate greater 
+    /* This value must be set only for data rate greater
         or equal than 850 kbps
-        Value choose according the "Table 21: Recommended SFD sequence 
+        Value choose according the "Table 21: Recommended SFD sequence
         configurations for best performance" of the manual.*/
     switch(data_rate) {
       case DW_DATA_RATE_110_KBPS:
          /* Default value, there are not operational effect.
             The SFD length is always 64 at 110 kbps */
-        user_sfd_lenght = 64; 
+        user_sfd_lenght = 64;
       break;
       case DW_DATA_RATE_850_KBPS:
         user_sfd_lenght = 16;
@@ -989,7 +989,7 @@ dw_set_datarate_and_sfd(dw1000_data_rate_t data_rate, dw1000_sfd_type_t sfd_type
     break;
   }
 
-  /* For the System Configuration bitmap Register, we focus on the RXM110K 
+  /* For the System Configuration bitmap Register, we focus on the RXM110K
     (bit 22). Thus we only touch the 3nd byte */
   dw_read_subreg(DW_REG_SYS_CFG, 2, 1, (uint8_t *) &sys_cfg_val);
 
@@ -1008,13 +1008,13 @@ dw_set_datarate_and_sfd(dw1000_data_rate_t data_rate, dw1000_sfd_type_t sfd_type
     break;
   case DW_DATA_RATE_850_KBPS:
     /* Disable Receiver Mode 110 kbps data rate */
-    sys_cfg_val &= ~(DW_RXM110K_MASK >> 16); 
+    sys_cfg_val &= ~(DW_RXM110K_MASK >> 16);
     /* 850 kbps bit rate */
     tx_fctrl_val |= (0x01UL << (DW_TXBR - 8)) & (DW_TXBR_MASK >> 8);
     break;
   case DW_DATA_RATE_6800_KBPS:
     /* Disable Receiver Mode 110 kbps data rate */
-    sys_cfg_val &= ~(DW_RXM110K_MASK >> 16); 
+    sys_cfg_val &= ~(DW_RXM110K_MASK >> 16);
     /* 6800 kbps bit  rate */
     tx_fctrl_val |= (0x02UL << (DW_TXBR - 8)) & (DW_TXBR_MASK >> 8);
     break;
@@ -1030,10 +1030,10 @@ dw_set_datarate_and_sfd(dw1000_data_rate_t data_rate, dw1000_sfd_type_t sfd_type
                   (uint8_t *) &drx_tune0b_val);
 }
 /**
- * \Brief Configure the preamble acquisition chunk (PAC) according 
- * to the PAC size and the PRF. 
+ * \Brief Configure the preamble acquisition chunk (PAC) according
+ * to the PAC size and the PRF.
  **/
-void 
+void
 dw_set_pac_size(dw1000_pac_size_t pac_size, dw1000_prf_t prf)
 {
   uint32_t drx_tune2_val = 0;
@@ -1074,12 +1074,12 @@ dw_set_pac_size(dw1000_pac_size_t pac_size, dw1000_prf_t prf)
  * \Brief Configure the LDE Replica Coefficient.
  */
 void
-dw_lde_repc_config(dw1000_preamble_code_t preamble_code, 
+dw_lde_repc_config(dw1000_preamble_code_t preamble_code,
                     dw1000_data_rate_t data_rate)
 {
   uint16_t lde_repc = 0;
   /* The following value has gives in the user-manual v2.10, table:
-  "Table 49: Sub-Register 0x2E:2804 – LDE_REPC configurations for 
+  "Table 49: Sub-Register 0x2E:2804 – LDE_REPC configurations for
       (850 kbps & 6.8 Mbps)"*/
   switch(preamble_code) {
     case DW_PREAMBLE_CODE_1:
@@ -1156,8 +1156,8 @@ dw_lde_repc_config(dw1000_preamble_code_t preamble_code,
       break;
   }
   /* From the user manual v2.10, p170:
-  NB: When operating at 110 kbps the unsigned values in Table 49 have to be 
-  divided by 8, (right shifted 3, shifting zeroes into the high order bits), 
+  NB: When operating at 110 kbps the unsigned values in Table 49 have to be
+  divided by 8, (right shifted 3, shifting zeroes into the high order bits),
   before programming into Sub-Register 0x2E:2804 – LDE_REPC. */
   if(data_rate == DW_DATA_RATE_110_KBPS) {
     lde_repc >>= 3; /* see page 170. */
@@ -1167,19 +1167,19 @@ dw_lde_repc_config(dw1000_preamble_code_t preamble_code,
                   (uint8_t *) &lde_repc);
 }
 /**
- * \brief Configure the LDE algorithm parameter for better performance and 
+ * \brief Configure the LDE algorithm parameter for better performance and
  *      compatibility with the DW1000 configuration.
  */
 void
 dw_configure_lde(dw1000_prf_t prf)
-{  
+{
   uint32_t lde_cfg1 = 0UL;
   uint32_t lde_cfg2 = 0UL;
 
   /* Configure LDE for better performance
     Following the user manual v2.10 section "2.5.5.4 NTM" */
   lde_cfg1 &= ~DW_NTM_MASK;
-  lde_cfg1 |= (0xD << DW_NTM) & DW_NTM_MASK; 
+  lde_cfg1 |= (0xD << DW_NTM) & DW_NTM_MASK;
   lde_cfg1 &= ~DW_PMULT_MASK;
   lde_cfg1 |= (0x3 << DW_PMULT) & DW_PMULT_MASK;
 
@@ -1200,17 +1200,17 @@ dw_configure_lde(dw1000_prf_t prf)
                   (uint8_t *) &lde_cfg2);
 }
 /**
- * \brief return if the Internal Low Drop Out (LDO) Regulators voltage has 
+ * \brief return if the Internal Low Drop Out (LDO) Regulators voltage has
  been configured by DecaWave during the DecaWave Test */
 int
 dw_is_ldotune(void){
-  /* The 40 bit LDOTUNE_CAL start at 0x04, if the first byte is != 0 
+  /* The 40 bit LDOTUNE_CAL start at 0x04, if the first byte is != 0
   then LDOTUNE is calibrated */
   // printf("LDOTUNE CAL value %08lX\n", dw_read_otp_32(0X04));
   return dw_read_otp_32(0X04) > 0;
 }
 /**
- * \brief Initialize the loading of the LDOTUNE_CAL value 
+ * \brief Initialize the loading of the LDOTUNE_CAL value
  parameter from OTP to LDOTUNE register if it is calibrated.
  */
 void
@@ -1234,7 +1234,7 @@ set_in_deep_sleep(void){
   uint8_t aon_cfg0 = 0; /* AON Configuration Register 0 */
   uint8_t aon_cfg1 = 0; /* AON Configuration Register 1 */
 
-  /* According to DECADRIVER "The 3 bits in AON CFG1 register must be 
+  /* According to DECADRIVER "The 3 bits in AON CFG1 register must be
   cleared to ensure proper operation of the DW1000 in DEEPSLEEP mode. */
   dw_write_subreg(DW_REG_AON, DW_SUBREG_AON_CFG1, 1,
                   &aon_cfg1);
@@ -1244,10 +1244,10 @@ set_in_deep_sleep(void){
                   &aon_ctrl);
 
   /* On wake-up run the temperature and voltage ADC */
-  aon_wcfg |= DW_ONW_RADC_MASK; 
+  aon_wcfg |= DW_ONW_RADC_MASK;
   /* On wake-up upload the configuration from the AON memory */
   aon_wcfg |= DW_ONW_LDC_MASK;
-  /* On wake-up load the LDE code 
+  /* On wake-up load the LDE code
   (useful for correct timestamps and RSSI value) */
   aon_wcfg |= DW_ONW_LLDE_MASK;
 
@@ -1256,8 +1256,8 @@ set_in_deep_sleep(void){
     aon_wcfg |= DW_ONW_LLDO_MASK;
   }
 
-  /* Sleep enable configuration bit. In order to put the DW1000 into the 
-  SLEEP state this bit needs to be set and then the configuration needs 
+  /* Sleep enable configuration bit. In order to put the DW1000 into the
+  SLEEP state this bit needs to be set and then the configuration needs
   to be uploaded to the AON using the UPL_CFG bit in AON_CTRL */
   aon_cfg0 |= DW_SLEEP_EN_MASK;
 
@@ -1265,7 +1265,7 @@ set_in_deep_sleep(void){
   aon_cfg0 |= DW_WAKE_PIN_MASK;
   // aon_cfg0 |= DW_WAKE_SPI_MASK;
 
-  /* Enable interrupt flag for the clock PLL lock event and 
+  /* Enable interrupt flag for the clock PLL lock event and
   SLEEP to INIT event */
   dw_clear_pending_interrupt(DW_MCPLOCK_MASK|DW_MSLP2INIT_MASK);
   dw_enable_interrupt(DW_MCPLOCK_MASK|DW_MSLP2INIT_MASK);
@@ -1284,8 +1284,8 @@ set_in_deep_sleep(void){
                   &aon_ctrl);
 }
 /**
- * \brief Set the TX power according the Table 20: "Reference values Register 
- *    file: 0x1E – Transmit Power Control for Manual Transmit Power Control" 
+ * \brief Set the TX power according the Table 20: "Reference values Register
+ *    file: 0x1E – Transmit Power Control for Manual Transmit Power Control"
  *    of the user manual (v2.10).
  *    We disable the Smart Transmit Power Control.
  *
@@ -1293,10 +1293,10 @@ set_in_deep_sleep(void){
  * \param[in] prf       The PRF.
  */
 void dw_set_manual_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
-  uint32_t tx_power_val = 0UL;  
+  uint32_t tx_power_val = 0UL;
   uint32_t sys_cfg_val = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
   /* Configure the TX power based on the channel and the PRF
-    Based on the manual: Table 20: Reference values Register file: 
+    Based on the manual: Table 20: Reference values Register file:
     0x1E – Transmit Power Control for Manual Transmit Power
     Control (Smart Transmit Power Control disabled) */
   sys_cfg_val |= DW_DIS_STXP_MASK;  /* Disable Smart Transmit Power Control */
@@ -1350,8 +1350,8 @@ void dw_set_manual_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
   dw_write_reg(DW_REG_TX_POWER, DW_LEN_TX_POWER, (uint8_t *) &tx_power_val);
 }
 /**
- * \brief Set the TX power according the Table 19: "Reference values for 
- *    Register file: 0x1E – Transmit Power Control, for Smart 
+ * \brief Set the TX power according the Table 19: "Reference values for
+ *    Register file: 0x1E – Transmit Power Control, for Smart
  *    Transmit Power Control" of the user manual (v2.18).
  *    We disable the Smart Transmit Power Control.
  *
@@ -1359,7 +1359,7 @@ void dw_set_manual_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
  * \param[in] prf       The PRF.
  */
 void dw_set_smart_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
-  uint32_t tx_power_val = 0UL;  
+  uint32_t tx_power_val = 0UL;
   uint32_t sys_cfg_val = dw_read_reg_32(DW_REG_SYS_CFG, DW_LEN_SYS_CFG);
   /* Configure the TX power based on the channel and the PRF
     Based on the manual: Table 19: Reference values for Register file: 0x1E – Transmit Power Control, for Smart Transmit Power Control */
@@ -1416,7 +1416,7 @@ void dw_set_smart_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
 /**
  * \brief Change the TX Power value.
  *      TX_POWER – Transmit Power Control
- * 
+ *
  * \param[in] tx_power_val   The new TX POWER configuration value.
  *                           This value should follow the characteristic gives
  *                            in the manual.
@@ -1450,7 +1450,7 @@ dw_get_tx_power(void){
   return tx_power_val;
 }
 /**
- * \brief Configures the DW1000 to be ready to receive message. 
+ * \brief Configures the DW1000 to be ready to receive message.
  *        See \ref dw1000_tx_conf_t.
  * \param[in] rx_conf   Configuration specification.
  */
@@ -1478,7 +1478,7 @@ dw_conf_rx(dw1000_rx_conf_t *rx_conf)
 /*  enableFiltering(); */
 }
 /**
- * \brief Configures the DW1000 to be ready to transmit message. 
+ * \brief Configures the DW1000 to be ready to transmit message.
  *        See \ref dw1000_tx_conf_t.
  *
  * \param[in] tx_conf   Configuration specification.
@@ -1488,7 +1488,7 @@ dw_conf_tx(dw1000_tx_conf_t *tx_conf)
 {
   /* TODO: Handling of long data frames (length > 128 or whatever.) */
   /* TODO: Cache data..? */
-  /* TODO: Should check dw1000 configuration for FCS enable and add the 2 
+  /* TODO: Should check dw1000 configuration for FCS enable and add the 2
    *       conditionally. */
   uint32_t data_len = tx_conf->data_len;
   data_len += 2; /* The +2 is for FCS */
@@ -1508,7 +1508,7 @@ dw_conf_tx(dw1000_tx_conf_t *tx_conf)
  * of the transmitted frame. This length includes the two-octet CRC
  * appended automatically (if this not disable for this send)
  * at the end of the frame.
- * If the length is bigger than 127 the transceiver use a Extended 
+ * If the length is bigger than 127 the transceiver use a Extended
  * (no standard) IEEE 802.15.4 UWB frames (it can be up to 1023 bytes long).
  *
  * \param frame_len the Transmit Frame Length.
@@ -1520,15 +1520,15 @@ dw_set_tx_frame_length(uint16_t frame_len)
   dw_read_subreg(DW_REG_TX_FCTRL, 0x0, 2, (uint8_t*) &tx_frame_control_lo);
 
   /* reseting the length */
-  tx_frame_control_lo &= ~(DW_TFLEN_MASK | DW_TFLE_MASK); 
+  tx_frame_control_lo &= ~(DW_TFLEN_MASK | DW_TFLE_MASK);
 
-  tx_frame_control_lo |= (frame_len << DW_TFLEN) 
+  tx_frame_control_lo |= (frame_len << DW_TFLEN)
                             & (DW_TFLEN_MASK | DW_TFLE_MASK);
   dw_write_subreg(DW_REG_TX_FCTRL, 0x0, 2, (uint8_t *) &tx_frame_control_lo);
 }
 /**
  * \brief Enable delayed transmission.
- * \param dx_timestamp Value to be programmed into DW1000 dx_timestamp 
+ * \param dx_timestamp Value to be programmed into DW1000 dx_timestamp
  *                     register.
  */
 void
@@ -1542,7 +1542,7 @@ dw_enable_delayed_tx(uint64_t dx_timestamp)
 }
 /**
  * \brief Enable delayed reception.
- * \param dx_timestamp Value to be programmed into DW1000 dx_timestamp 
+ * \param dx_timestamp Value to be programmed into DW1000 dx_timestamp
  *                     register.
  */
 void
@@ -1661,11 +1661,11 @@ dw_conf_print()
   printf("DW1000 Current Configuration\r\n");
   printf("============================\r\n");
   printf("Device id   : 0x%08" PRIx32 "\r\n", dw_get_device_id());
-  printf("SYS_STATUS  : 0x%016" PRIx64 "\r\n", (unsigned long long) 
+  printf("SYS_STATUS  : 0x%016" PRIx64 "\r\n", (unsigned long long)
                         dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS));
-  printf("SYS_MASK    : 0x%016" PRIx64 "\r\n", (unsigned long long) 
+  printf("SYS_MASK    : 0x%016" PRIx64 "\r\n", (unsigned long long)
                         dw_read_reg_64(DW_REG_SYS_MASK, DW_LEN_SYS_MASK));
-  printf("SYS_STATE   : 0x%016" PRIx64 "\r\n", (unsigned long long) 
+  printf("SYS_STATE   : 0x%016" PRIx64 "\r\n", (unsigned long long)
                         dw_read_reg_64(DW_REG_SYS_STATE, DW_LEN_SYS_STATE));
   printf("============================\r\n");
   printf("sys_cfg    : 0x%08" PRIx32 "\r\n", sys_cfg_val);
@@ -1827,10 +1827,10 @@ dw_get_device_time()
 void
 dw_enable_adc()
 {
-  uint32_t pmsc_val = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, 
+  uint32_t pmsc_val = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0,
                       DW_SUBLEN_PMSC_CTRL0);
   pmsc_val |= DW_ADCCE_MASK;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&pmsc_val);
 }
 /**
@@ -1839,10 +1839,10 @@ dw_enable_adc()
 void
 dw_disable_adc()
 {
-  uint32_t pmsc_val = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, 
+  uint32_t pmsc_val = dw_read_subreg_32(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0,
                       DW_SUBLEN_PMSC_CTRL0);
   pmsc_val &= ~DW_ADCCE_MASK;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                   (uint8_t *)&pmsc_val);
 }/**
  * \brief Private function. Forces the ADC to update sensor samples.
@@ -1870,7 +1870,7 @@ void dw_adc_sample()
   tc_sarc_val = DW_SAR_CTRL_MASK;
   dw_write_subreg(DW_REG_TX_CAL, DW_SUBREG_TC_SARC, 1, &tc_sarc_val);
 
-  /* The enable should set for a minimum of 2.5 μs to 
+  /* The enable should set for a minimum of 2.5 μs to
     allow the SAR time to complete its reading. */
   dw1000_us_delay(3);
 
@@ -1901,14 +1901,14 @@ float dw_get_temperature( dw_adc_src_t temp_source )
   {
     case DW_ADC_SRC_LATEST:
       dw_adc_sample();
-      read_temp   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARL, 
+      read_temp   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARL,
                               DW_SUBLEN_TC_SARL);
       read_temp  &= DW_SAR_LTEMP_MASK;
       read_temp >>= DW_SAR_LTEMP;
       break;
 
     case DW_ADC_SRC_WAKEUP:
-      read_temp   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARW, 
+      read_temp   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARW,
                               DW_SUBLEN_TC_SARW);
       read_temp  &= DW_SAR_WTEMP_MASK;
       read_temp >>= DW_SAR_WTEMP;
@@ -1939,14 +1939,14 @@ float dw_get_voltage( dw_adc_src_t voltage_source )
   {
     case DW_ADC_SRC_LATEST:
       dw_adc_sample();
-      read_voltage   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARL, 
+      read_voltage   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARL,
                                             DW_SUBLEN_TC_SARL);
       read_voltage  &= DW_SAR_LVBAT_MASK;
       read_voltage >>= DW_SAR_LVBAT;
       break;
 
     case DW_ADC_SRC_WAKEUP:
-      read_voltage   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARW, 
+      read_voltage   = dw_read_subreg_32(DW_REG_TX_CAL, DW_SUBREG_TC_SARW,
                                                         DW_SUBLEN_TC_SARW);
       read_voltage  &= DW_SAR_WVBAT_MASK;
       read_voltage >>= DW_SAR_WVBAT;
@@ -1971,7 +1971,7 @@ float dw_get_voltage( dw_adc_src_t voltage_source )
 float
 dw_get_noise_level()
 {
-  return (float)((dw_read_reg_64(DW_REG_RX_FQUAL, DW_LEN_RX_FQUAL) 
+  return (float)((dw_read_reg_64(DW_REG_RX_FQUAL, DW_LEN_RX_FQUAL)
         & (DW_STD_NOISE_MASK)) >> DW_STD_NOISE);
 }
 /**
@@ -1982,42 +1982,42 @@ dw_get_noise_level()
 float
 dw_get_fp_ampl()
 {
-  return (float)((dw_read_reg_64(DW_REG_RX_FQUAL, DW_LEN_RX_FQUAL) 
+  return (float)((dw_read_reg_64(DW_REG_RX_FQUAL, DW_LEN_RX_FQUAL)
         & (DW_FP_AMPL2_MASK)) >> DW_FP_AMPL2);
 }
 /**
  * \brief Get value required for the computation of the First Path Power Level
  *        and the Receive Power and noise information.
- *        With the following format : F1 F2 F3 N C N_correction NOISE 
+ *        With the following format : F1 F2 F3 N C N_correction NOISE
  *        and clock_offset detailed in the manual:
  *        In the section 4.7.1 Estimating the signal power in the first path
  *        And in the section 4.7.2 Estimating the receive signal power
  *        N_correction == 1 if the value RXPACC is saturated
  *        All value was unit16_t expect N_correction (uint8_t) and clock_offset.
  */
-void 
+void
 dw_get_receive_quality(dw1000_frame_quality* quality)
 {
   uint16_t rx_pacc_nosat = 0;
   /* Read FP_AMPL1 */
-  dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_FP_AMPL1, 
-                                  DW_SUBLEN_FP_AMPL1, 
+  dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_FP_AMPL1,
+                                  DW_SUBLEN_FP_AMPL1,
                                   (uint8_t*) &(quality->fp_ampl1));
 
   /* Read FP_AMPL2 */
-  dw_read_subreg(DW_REG_RX_FQUAL, DW_SUBREG_FP_AMPL2, 
-                                  DW_SUBLEN_FP_AMPL2, 
+  dw_read_subreg(DW_REG_RX_FQUAL, DW_SUBREG_FP_AMPL2,
+                                  DW_SUBLEN_FP_AMPL2,
                                   (uint8_t*) &(quality->fp_ampl2));
 
   /* Read STD_NOISE */
   dw_read_subreg(DW_REG_RX_FQUAL, 0, 2, (uint8_t*) &(quality->std_noise));
 
   /* Read FP_AMPL3 */
-  dw_read_subreg(DW_REG_RX_FQUAL, DW_SUBREG_FP_AMPL3, 
-                                  DW_SUBLEN_FP_AMPL3, 
+  dw_read_subreg(DW_REG_RX_FQUAL, DW_SUBREG_FP_AMPL3,
+                                  DW_SUBLEN_FP_AMPL3,
                                   (uint8_t*) &(quality->fp_ampl3));
 
-  /* Read RXPACC */    
+  /* Read RXPACC */
   /* N = the Preamble Accumulation Count value reported in the RXPACC */
   /* we read only 2 bytes in place of the all register */
   dw_read_subreg(DW_REG_RX_FINFO, 2, 2, (uint8_t*) &(quality->rx_pacc));
@@ -2025,13 +2025,13 @@ dw_get_receive_quality(dw1000_frame_quality* quality)
   quality->rx_pacc &= (DW_RXPACC_MASK >> DW_RXPACC);
 
   /* read RXPACC_NOSAT */
-  dw_read_subreg(DW_REG_DRX_CONF, DW_SUBREG_RXPACC_NOSAT, 
+  dw_read_subreg(DW_REG_DRX_CONF, DW_SUBREG_RXPACC_NOSAT,
                         DW_SUBLEN_RXPACC_NOSAT, (uint8_t*) &rx_pacc_nosat);
 
   /* CIR_PWR */
   /* C = the Channel Impulse Response Power value reported in the CIR_PWR */
-  dw_read_subreg(DW_REG_RX_FQUAL, DW_SUBREG_CIR_PWR, 
-                                  DW_SUBLEN_CIR_PWR, 
+  dw_read_subreg(DW_REG_RX_FQUAL, DW_SUBREG_CIR_PWR,
+                                  DW_SUBLEN_CIR_PWR,
                                   (uint8_t*) &(quality->cir_pwr));
 
   /* check if RXPACC is saturated and need to be corrected */
@@ -2045,19 +2045,19 @@ dw_get_receive_quality(dw1000_frame_quality* quality)
 /**
  * \brief Print value required for the computation of the First Path Power Level
  *        and the Receive Power.
- *        With the following format : F1 F2 F3 N C N_correction NOISE and the 
+ *        With the following format : F1 F2 F3 N C N_correction NOISE and the
  *        clock_offset detailed in the manual:
  *        In the section 4.7.1 Estimating the signal power in the first path
  *        And in the section 4.7.2 Estimating the receive signal power
  *        N_correction == 1 if the value RXPACC is saturated.
  *
  */
-void 
+void
 print_receive_quality(dw1000_frame_quality quality)
 {
-  printf(" 0x%04X 0x%04X 0x%04X 0x%04X 0x%04X 0x%02X 0x%04X %d", 
-      quality.fp_ampl1, quality.fp_ampl2, quality.fp_ampl3, 
-      quality.rx_pacc, quality.cir_pwr, quality.n_correction, 
+  printf(" 0x%04X 0x%04X 0x%04X 0x%04X 0x%04X 0x%02X 0x%04X %d",
+      quality.fp_ampl1, quality.fp_ampl2, quality.fp_ampl3,
+      quality.rx_pacc, quality.cir_pwr, quality.n_correction,
       quality.std_noise, (int) quality.clock_offset);
 }
 
@@ -2065,10 +2065,10 @@ print_receive_quality(dw1000_frame_quality quality)
 /* Error counter                                                             */
 /*===========================================================================*/
 /**
- * \brief Event Counters Enable. 
+ * \brief Event Counters Enable.
  *  Waring: The Event Counters increase the power consumption.
  */
-void 
+void
 enable_error_counter(void){
   uint16_t value = (0x1 << DW_EVC_EN) & DW_EVC_EN_MASK;
   dw_write_reg(DW_REG_EVC_CTRL, 2, (uint8_t *) &value);
@@ -2077,7 +2077,7 @@ enable_error_counter(void){
 /**
  * \brief Event Counters Disable.
  */
-void 
+void
 disable_error_counter(void){
   uint16_t value = 0;
   dw_write_reg(DW_REG_EVC_CTRL, 2, (uint8_t *) &value);
@@ -2085,7 +2085,7 @@ disable_error_counter(void){
 /**
  * \brief Reset the counter of each counter.
  */
-void 
+void
 reset_error_counter(void){
   uint16_t value = (0x1 << DW_EVC_CLR) & DW_EVC_CLR_MASK;
   /* we need to write at least 2 bytes according the user manual */
@@ -2108,7 +2108,7 @@ print_error_counter(void){
   dw_read_subreg(DW_REG_EVC_CTRL, DW_SUBREG_EVC_RSE, 2, (uint8_t*) &value);
   value &= DW_EVC_RSE_MASK;
   if( value > 0)
-    printf("Reed Solomon decoder (Frame Sync Loss) Error Event Counter %d\n", 
+    printf("Reed Solomon decoder (Frame Sync Loss) Error Event Counter %d\n",
             value);
 
   dw_read_subreg(DW_REG_EVC_CTRL, DW_SUBREG_EVC_FCG, 2, (uint8_t*) &value);
@@ -2182,7 +2182,7 @@ dw_get_rx_len(void)
 
   /* check if we don't have a to long length */
   rx_frame_info_lo = rx_frame_info_lo & (DW_RXFLEN_MASK | DW_RXFLE_MASK);
-  return (rx_frame_info_lo < DW_RX_BUFFER_MAX_LEN) ? 
+  return (rx_frame_info_lo < DW_RX_BUFFER_MAX_LEN) ?
               (rx_frame_info_lo) : (DW_RX_BUFFER_MAX_LEN);
 }
 /**
@@ -2210,7 +2210,7 @@ dw_get_rx_error()
   uint64_t status_reg_64 = 0ULL;
   uint32_t isError = 0UL;
 
-  const uint32_t error_mask_lo = DW_RXPHE_MASK | DW_RXRFTO_MASK | 
+  const uint32_t error_mask_lo = DW_RXPHE_MASK | DW_RXRFTO_MASK |
                 DW_RXPTO_MASK | DW_RXSFDTO_MASK | DW_RXRFSL_MASK;
   const uint32_t error_mask_hi = DW_RXPREJ_MASK;
   status_reg_64 = dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS);
@@ -2279,19 +2279,19 @@ dw_is_rx_timeout()
 }
 
 /**
- * \brief Enable Accumulator memory to being able to 
+ * \brief Enable Accumulator memory to being able to
  * read the CIR value after reception of a message.
- * FACE bit and the AMCE bit need to be set to 1 to 
+ * FACE bit and the AMCE bit need to be set to 1 to
  * allow the accumulator reading to operate correctly.
  */
-void 
+void
 dw_enable_accumulator_memory(void)
 {
 
   uint32_t psmc_ctrl0_val = 0UL;
-  dw_read_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_read_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
     (uint8_t*) &psmc_ctrl0_val);
-  /* Force RX clock enable and sourced from the 125 MHz PLL clock. 
+  /* Force RX clock enable and sourced from the 125 MHz PLL clock.
   (NB: ensure PLL clock is present).*/
   psmc_ctrl0_val &= ~DW_RXCLKS_MASK;
   psmc_ctrl0_val |= 0x02 << DW_RXCLKS;
@@ -2305,12 +2305,12 @@ dw_enable_accumulator_memory(void)
 /**
  * \brief Disable Accumulator memory tor educe power consumption.
  */
-void 
+void
 dw_disable_accumulator_memory(void)
 {
 
   uint32_t psmc_ctrl0_val = 0UL;
-  dw_read_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_read_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
     (uint8_t*) &psmc_ctrl0_val);
   /* Set RX clock to auto mode.*/
   psmc_ctrl0_val &= ~DW_RXCLKS_MASK;
@@ -2324,7 +2324,7 @@ dw_disable_accumulator_memory(void)
  * \brief Return 1 to indicate the completion of the leading
  * edge detection and other adjustments of the receive timestamp information.
  * */
-uint8_t 
+uint8_t
 dw_is_lde_done(void){
   uint32_t sys_status = 0UL;
   dw_read_subreg(DW_REG_SYS_STATUS, 0x0, 4, (uint8_t*) &sys_status);
@@ -2332,14 +2332,14 @@ dw_is_lde_done(void){
 }
 
 /**
- * \brief After the reception of a message, get the First Path Index 
+ * \brief After the reception of a message, get the First Path Index
  * of the Channel Impuse Response placed in the accumulator data
  * register.
- * The 10 most significant bits of FP_INDEX represent the integer 
- * portion of the number and the 6 least significant bits represent 
+ * The 10 most significant bits of FP_INDEX represent the integer
+ * portion of the number and the 6 least significant bits represent
  * the fractional part.
  * */
-uint16_t 
+uint16_t
 dw_get_fp_index(void) {
   uint16_t fp_index = 0UL;
   dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_FP_INDEX, DW_SUBLEN_FP_INDEX, (uint8_t*) &fp_index);
@@ -2347,8 +2347,8 @@ dw_get_fp_index(void) {
 }
 
 /**
- * \brief Return the LDE Threshold value. This threshold is calculated 
- * based on an estimate of the noise made during the LDE algorithm’s 
+ * \brief Return the LDE Threshold value. This threshold is calculated
+ * based on an estimate of the noise made during the LDE algorithm’s
  * analysis of the accumulator data.
  * */
 uint16_t
@@ -2360,17 +2360,17 @@ dx_get_lde_threshold(void){
 /**
  * \brief Gets the timestamps for the latest received frame.
  * \note  This is the Raw Timestamp for the received frame.
- *        This is the value of the system clock (125 MHz) captured at 
- *        the time of the first chip of the first PHR symbol. The 
- *        precision here is approximately 125 MHz, i.e. the 9 least 
+ *        This is the value of the system clock (125 MHz) captured at
+ *        the time of the first chip of the first PHR symbol. The
+ *        precision here is approximately 125 MHz, i.e. the 9 least
  *        significant bits are zero.
- * \return The reeded timestamps. 
+ * \return The reeded timestamps.
  */
 uint64_t
 dw_get_rx_raw_timestamp(void)
 {
   uint64_t value = 0ULL;
-  dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_RAWST, DW_SUBLEN_RX_RAWST, 
+  dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_RAWST, DW_SUBLEN_RX_RAWST,
                   (uint8_t *) &value);
   return value;
 }
@@ -2382,24 +2382,24 @@ uint64_t
 dw_get_rx_timestamp(void)
 {
   uint64_t value = 0ULL;
-  dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_STAMP, DW_SUBLEN_RX_STAMP, 
+  dw_read_subreg(DW_REG_RX_TIME, DW_SUBREG_RX_STAMP, DW_SUBLEN_RX_STAMP,
                   (uint8_t*) &value);
   return value;
 }
 /**
  * \brief Gets the timestamps for the latest transmitted frame.
  * \note  This is the Raw Timestamp for the transmitted frame.
- *        This is the value of the system clock (125 MHz) captured at 
- *        the time of the first chip of the first PHR symbol. The 
- *        precision here is approximately 125 MHz, i.e. the 9 least 
+ *        This is the value of the system clock (125 MHz) captured at
+ *        the time of the first chip of the first PHR symbol. The
+ *        precision here is approximately 125 MHz, i.e. the 9 least
  *        significant bits are zero.
- * \param timestamp The reeded timestamps will be placed here. 
+ * \param timestamp The reeded timestamps will be placed here.
  */
 uint64_t
 dw_get_tx_raw_timestamp(void)
 {
   uint64_t value = 0ULL;
-  dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_RAWST, DW_SUBLEN_TX_RAWST, 
+  dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_RAWST, DW_SUBLEN_TX_RAWST,
                   (uint8_t*) &value);
   return value;
 }
@@ -2411,15 +2411,15 @@ uint64_t
 dw_get_tx_timestamp(void)
 {
   uint64_t value = 0ULL;
-  dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_STAMP, DW_SUBLEN_TX_STAMP, 
+  dw_read_subreg(DW_REG_TX_TIME, DW_SUBREG_TX_STAMP, DW_SUBLEN_TX_STAMP,
                   (uint8_t*) &value);
   return value;
 }
 /**
- * \brief Set the ranging bit in the PHY header (PHR) of the transmitted 
+ * \brief Set the ranging bit in the PHY header (PHR) of the transmitted
  *        frame to 1. Identifying the frame as a ranging frame.
- *        In some receiver implementations this may be used to enable hardware 
- *        or software associated with time-stamping the frame. In the DW1000 
+ *        In some receiver implementations this may be used to enable hardware
+ *        or software associated with time-stamping the frame. In the DW1000
  *        receiver the time-stamping of the receive frame does not depend or use
  *        the ranging bit in the received PHR.
  */
@@ -2428,15 +2428,15 @@ dw_enable_ranging_frame(void)
 {
   uint8_t value = 0;
   /* TR bit is the 15nd bit */
-  dw_read_subreg(DW_REG_TX_FCTRL, 0x1, 1, &value); 
+  dw_read_subreg(DW_REG_TX_FCTRL, 0x1, 1, &value);
   value |= (DW_TR_MASK >> 8);
   dw_write_subreg(DW_REG_TX_FCTRL, 0x1, 1, &value);
 }
 /**
- * \brief Disable the ranging bit in the PHY header (PHR) of the transmitted 
+ * \brief Disable the ranging bit in the PHY header (PHR) of the transmitted
  *        frame. Identifying the frame as not a ranging frame.
- *        In some receiver implementations this may be used to enable hardware 
- *        or software associated with time-stamping the frame. In the DW1000 
+ *        In some receiver implementations this may be used to enable hardware
+ *        or software associated with time-stamping the frame. In the DW1000
  *        receiver the time-stamping of the receive frame does not depend or use
  *        the ranging bit in the received PHR.
  */
@@ -2445,18 +2445,18 @@ dw_disable_ranging_frame(void)
 {
   uint8_t value = 0;
   /* TR bit is the 15nd bit */
-  dw_read_subreg(DW_REG_TX_FCTRL, 0x1, 1, &value); 
+  dw_read_subreg(DW_REG_TX_FCTRL, 0x1, 1, &value);
   value &= ~(DW_TR_MASK >> 8);
   dw_write_subreg(DW_REG_TX_FCTRL, 0x1, 1, &value);
 }
 /**
  * \brief Check if the last received frame is a ranging frame. This reflects the
- *        ranging bit in the received PHY header identifying the frame as a 
- *        ranging packet. This value is updated when a good PHR is detected 
+ *        ranging bit in the received PHY header identifying the frame as a
+ *        ranging packet. This value is updated when a good PHR is detected
  *        (when the RXPHD status bit is set).
  * \return if the last received frame is a ranging frame.
  */
-uint8_t 
+uint8_t
 dw_is_ranging_frame(void)
 {
   uint8_t value = 0;
@@ -2466,7 +2466,7 @@ dw_is_ranging_frame(void)
 }
 /**
  * \brief Set the TX and RX antenna delay.
- *    These antennas delay are used to shift the Tx and Rx timestamps 
+ *    These antennas delay are used to shift the Tx and Rx timestamps
  *    and are expressed in tick (~15.65 ps).
  *
  * \details This function assumes the repartition given by the ASP012:
@@ -2501,7 +2501,7 @@ dw_set_default_antenna_delay(dw1000_prf_t prf){
 }
 /**
  * \brief Set the TX antenna delay.
- *    This antenna delay was used to shift the Tx and Rx timestamps 
+ *    This antenna delay was used to shift the Tx and Rx timestamps
  *    and was expressed in tick (~15.65 ps).
  */
 void
@@ -2511,7 +2511,7 @@ dw_set_tx_antenna_delay(uint16_t tx_delay)
 }
 /**
  * \brief Get the TX antenna delay.
- *    This antenna delay was used to shift the Tx and Rx timestamps 
+ *    This antenna delay was used to shift the Tx and Rx timestamps
  *    and was expressed in tick (~15.65 ps).
  */
 uint16_t
@@ -2523,25 +2523,25 @@ dw_get_tx_antenna_delay(void)
 }
 /**
  * \brief Set the RX antenna delay.
- *    This antenna delay was used to shift the Tx and Rx timestamps 
+ *    This antenna delay was used to shift the Tx and Rx timestamps
  *    and was expressed in tick (~15.65 ps).
  */
 void
 dw_set_rx_antenna_delay(uint16_t rx_delay)
 {
-  dw_write_subreg(DW_REG_LDE_IF, DW_SUBREG_LDE_RXANTD, DW_SUBLEN_LDE_RXANTD, 
+  dw_write_subreg(DW_REG_LDE_IF, DW_SUBREG_LDE_RXANTD, DW_SUBLEN_LDE_RXANTD,
                   (uint8_t *) &rx_delay);
 }
 /**
  * \brief Get the RX antenna delay.
- *    This antenna delay was used to shift the Tx and Rx timestamps 
+ *    This antenna delay was used to shift the Tx and Rx timestamps
  *    and was expressed in tick (~15.65 ps).
  */
 uint16_t
 dw_get_rx_antenna_delay(void)
 {
   uint16_t rx_delay = 0;
-  dw_read_subreg(DW_REG_LDE_IF, DW_SUBREG_LDE_RXANTD, DW_SUBLEN_LDE_RXANTD, 
+  dw_read_subreg(DW_REG_LDE_IF, DW_SUBREG_LDE_RXANTD, DW_SUBLEN_LDE_RXANTD,
                   (uint8_t *) &rx_delay);
   return rx_delay;
 }
@@ -2555,9 +2555,9 @@ dw_get_antenna_delay()
   return (uint16_t) dw_read_reg_32(DW_REG_TX_ANTD, DW_LEN_TX_ANTD);
 }
 /**
- *  \brief Get the Receiver Time Tracking Offset. This value is provide by 
+ *  \brief Get the Receiver Time Tracking Offset. This value is provide by
  *      analyzing the correction made by the phase-lock-loop (PLL) to decode the
- *      signal, it provide an estimate of the difference between the 
+ *      signal, it provide an estimate of the difference between the
  *      transmitting and the receiver clock.
  * \return The Receiver Time Tracking Offset in part per million (ppm) * 100.
  *        The value must be between -20*100 and 20*100 (theoretically).
@@ -2573,7 +2573,7 @@ dw_get_clock_offset(void){
   rx_tofs &= DW_RXTOFS_MASK;
 
   /*
-  printf("clock offset1 0x%.2X%.4X\n", (unsigned int) (rx_tofs >> 16), 
+  printf("clock offset1 0x%.2X%.4X\n", (unsigned int) (rx_tofs >> 16),
                                       (unsigned int) rx_tofs); */
 
   /* convert a 19 signed bit number to a 32 bits signed number */
@@ -2583,11 +2583,11 @@ dw_get_clock_offset(void){
   }
 
   /*
-  printf("clock offset2 0x%.2X%.4X\n", (unsigned int) (rx_tofs >> 16), 
+  printf("clock offset2 0x%.2X%.4X\n", (unsigned int) (rx_tofs >> 16),
                                       (unsigned int) rx_tofs); */
 
-  /* brief dummy : The value in RXTTCKI will take just one of two values 
-      depending on the PRF: 0x01F00000 @ 16 MHz PRF, 
+  /* brief dummy : The value in RXTTCKI will take just one of two values
+      depending on the PRF: 0x01F00000 @ 16 MHz PRF,
       and 0x01FC0000 @ 64 MHz PRF. */
   rx_ttcki = dw_read_reg_32(DW_REG_RX_TTCKI, DW_LEN_RX_TTCKI);
 
@@ -2612,7 +2612,7 @@ dw_get_clock_offset(void){
 void
 dw_set_dx_timestamp(uint64_t timestamp)
 {
-  dw_write_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, (uint8_t *) &timestamp);  
+  dw_write_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, (uint8_t *) &timestamp);
 
   uint32_t sys_status = 0UL;
   dw_read_subreg(DW_REG_SYS_STATUS, 0x0, 4, (uint8_t*) &sys_status);
@@ -2663,7 +2663,7 @@ uint64_t
 dw_generate_extendedUniqueID()
 {
   uint64_t eid = 0ULL;
-  uint i;
+  uint8_t i;
   for(i = 0; i < 4; i++) {
     eid |= ((uint64_t)rand()) << (i * 16);
   }
@@ -2674,7 +2674,7 @@ dw_generate_extendedUniqueID()
    ---------------------------------------------------------------------------*/
 
 /**
- * \brief Aborts current transmission or reception and returns device to idle 
+ * \brief Aborts current transmission or reception and returns device to idle
  *        mode.
  */
 void
@@ -2688,7 +2688,7 @@ dw_idle(void)
   dw1000.state = DW_STATE_IDLE;
 }
 /**
- * \brief Configure the receiver for the RX SNIF mode or disable 
+ * \brief Configure the receiver for the RX SNIF mode or disable
  *                   the RX SNIF mode.
  *
  * input parameters:
@@ -2697,14 +2697,14 @@ dw_idle(void)
  *                            i.e. The receiver is always on in RX Mode.
  * \param[in]      rx_on  - SNIFF mode ON period in PACs;
  *                          The DW1000 add automatically 1 on rx_on value.
- * \param[in]      rx_off - SNIFF mode OFF period in us; 
+ * \param[in]      rx_off - SNIFF mode OFF period in us;
  *                            more precisely, in 1.0256 microsecond intervals.
  */
-void 
+void
 dw_set_snif_mode(uint8_t enable, uint8_t rx_on, uint8_t rx_off)
 {
   uint32_t rx_sniff_val = 0UL;
-  if(enable){ /* enable SNIF MODE */ 
+  if(enable){ /* enable SNIF MODE */
     rx_sniff_val |= (rx_on << DW_SNIFF_ONT) & DW_SNIFF_ONT_MASK;
     rx_sniff_val |= (rx_off << DW_SNIFF_OFFT) & DW_SNIFF_OFFT_MASK;
     dw_write_reg(DW_REG_RX_SNIFF, DW_LEN_RX_SNIFF, (uint8_t *) &rx_sniff_val);
@@ -2731,7 +2731,7 @@ dw_init_rx(void)
  * \brief Initiates a new reception on the DW1000. Assumes that it has been
  * configured already.
  */
-void 
+void
 dw_init_delayed_rx(void)
 {
   dw1000.state = DW_STATE_RECEIVING;
@@ -2756,7 +2756,7 @@ dw_init_delayed_rx(void)
  * \brief Starts a new transmission. Data must either already be uploaded to
  *        DW1000 or be uploaded VERY shortly.
  *
- * \param wait_4_resp If true, program the transmitter to wait for 
+ * \param wait_4_resp If true, program the transmitter to wait for
  *                  response.
  * \param delayed If delayed is true, program a delayed transmission.
  */
@@ -2921,7 +2921,7 @@ dw_is_receive_status(uint64_t status)
     | DW_RXPTO_MASK
     | DW_AFFREJ_MASK
     | DW_RXRSCS_MASK;
-    /* | (DW_RXPREJ_MASK << 32); Preamble rejection give false 
+    /* | (DW_RXPREJ_MASK << 32); Preamble rejection give false
                                   positive detection*/
   return (status & mask) > 0;
 }
@@ -2960,7 +2960,7 @@ dw1000_test()
 int
 dw1000_is_spi_working()
 {
-  return ( 0xDECA0130UL == dw_read_reg_32(DW_REG_DEV_ID, 
+  return ( 0xDECA0130UL == dw_read_reg_32(DW_REG_DEV_ID,
                                                     DW_LEN_DEV_ID));
 }
 /**
@@ -2974,7 +2974,7 @@ dw1000_test_RW_longbits()
 {
   uint16_t size = 1024;
   uint8_t data_write[size], data_read[size], data_save[size];
-  uint i;
+  uint8_t i;
   for(i = 0; i < size; i++) {
     data_write[i] = (uint8_t)rand();
     data_read[i] = 0;
@@ -2995,7 +2995,7 @@ dw1000_test_RW_longbits()
   if(error == 0) {
     PRINTF("READ WRITE TEST on 1024 tx_buffer: SUCCESS\r\n");
   } else {
-    PRINTF("READ WRITE TEST on 1024 tx_buffer: error: %i dis-concordance\r\n", 
+    PRINTF("READ WRITE TEST on 1024 tx_buffer: error: %i dis-concordance\r\n",
             error);
   }
 }
@@ -3165,13 +3165,13 @@ dw_read_otp_32(uint16_t otp_addr)
   };
 
   uint32_t read_data = 0UL;
-  dw_write_subreg(DW_REG_OTP_IF, DW_SUBREG_OTP_ADDR, DW_SUBLEN_OTP_ADDR, 
+  dw_write_subreg(DW_REG_OTP_IF, DW_SUBREG_OTP_ADDR, DW_SUBLEN_OTP_ADDR,
                   (uint8_t *)&otp_addr);
   /* Enable manual read on a specified ADDR */
   dw_write_subreg(DW_REG_OTP_IF, DW_SUBREG_OTP_CTRL, 1, (uint8_t *)&cmd[0]);
   /* Reset the Control register (OTPRDEN is not self clearing) */
   dw_write_subreg(DW_REG_OTP_IF, DW_SUBREG_OTP_CTRL, 1, (uint8_t *)&cmd[1]);
-  read_data = dw_read_subreg_32(DW_REG_OTP_IF, DW_SUBREG_OTP_RDAT, 
+  read_data = dw_read_subreg_32(DW_REG_OTP_IF, DW_SUBREG_OTP_RDAT,
                                     DW_SUBLEN_OTP_RDAT);
 
   return read_data;
@@ -3209,8 +3209,8 @@ dw_good_rx_buffer_pointer(void)
   dw_read_subreg(DW_REG_SYS_STATUS, 0x3, 1, &statusReg);
   /* HSRBP is the 30th bit */
   /* ICRBP is the 31th bit */
-  return (((statusReg & (DW_HSRBP_MASK >> 24)) >> (DW_HSRBP - 24)) ==  
-          ((statusReg & (DW_ICRBP_MASK >> 24)) >> (DW_ICRBP - 24))); 
+  return (((statusReg & (DW_HSRBP_MASK >> 24)) >> (DW_HSRBP - 24)) ==
+          ((statusReg & (DW_ICRBP_MASK >> 24)) >> (DW_ICRBP - 24)));
 }
 /**
  * \brief   Check if an overrun condition occur in the IC receiver.
@@ -3350,7 +3350,7 @@ dw_db_mode_clear_pending_interrupt(void)
 }
 /**
  * \brief Configure the DW1000 to be in continuous waves transmit mode.
- *    We follow the procedure gived in the section 8.1 "IC Calibration – 
+ *    We follow the procedure gived in the section 8.1 "IC Calibration –
  *     Crystal Oscillator Trim" of the user manual (v2.10) to achieve this.
  *  \note /!\ The transmitter should be reset before call this function to know
  *          all register value.
@@ -3359,19 +3359,19 @@ void dw_cw_mode(dw1000_channel_t channel){
   uint32_t rx_conf_val = 0x0009A000UL;
   dw_write_reg(DW_REG_RF_CONF, DW_LEN_RF_CONF, (uint8_t*) &rx_conf_val);
   uint32_t psmc_ctrl1_val = 0x00000000UL;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL1, DW_SUBLEN_PMSC_CTRL1, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL1, DW_SUBLEN_PMSC_CTRL1,
                     (uint8_t*) &psmc_ctrl1_val);
   dw_set_channel(channel);
   /* PRF 16 MHz is the default configuration */
   dw_set_manual_tx_power(channel, DW_PRF_16_MHZ);
   uint32_t psmc_ctrl0_val = 0x22UL;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0, 
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_CTRL0, DW_SUBLEN_PMSC_CTRL0,
                     (uint8_t*) &psmc_ctrl0_val);
-  /* the procedure say to write 4 bytes but 
+  /* the procedure say to write 4 bytes but
       the register have a size of 2 bytes */
   uint32_t psmc_txfseq_val = 0x0UL;
-  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_TXFSEQ, DW_SUBLEN_PMSC_TXFSEQ, 
-                    (uint8_t*) &psmc_txfseq_val);  
+  dw_write_subreg(DW_REG_PMSC, DW_SUBREG_PMSC_TXFSEQ, DW_SUBLEN_PMSC_TXFSEQ,
+                    (uint8_t*) &psmc_txfseq_val);
   rx_conf_val = 0x0009A000UL;
   dw_write_reg(DW_REG_RF_CONF, DW_LEN_RF_CONF, (uint8_t*) &rx_conf_val);
   uint8_t tc_pgtest_val = 0x13;
@@ -3385,17 +3385,17 @@ void dw_cw_mode(dw1000_channel_t channel){
 /**
  * \brief This is used adjust the crystal frequency.
  *
- * \param[in]   value - crystal trim value (in range 0x0 to 0x1F) 31 steps 
+ * \param[in]   value - crystal trim value (in range 0x0 to 0x1F) 31 steps
  *              (~1.5ppm per step).
- *              Based on the "void dwt_xtaltrim(uint8 value)" function in the 
+ *              Based on the "void dwt_xtaltrim(uint8 value)" function in the
  *              DecaRanging app.
  */
-void 
+void
 dw_fs_xtalt(uint8_t value)
 {
   uint32_t ec_ctrl_val = dw_read_reg_32(DW_REG_EC_CTRL, DW_LEN_EC_CTRL);
-  /* enable the Clock PLL lock detect tune 
-      Required when using the Crystal Trim Setting 
+  /* enable the Clock PLL lock detect tune
+      Required when using the Crystal Trim Setting
       Enable reliability of the Clock PLL Lock bit in the SYS STATUS*/
   ec_ctrl_val |= (0x01 << DW_PLLLDT) & DW_PLLLDT_MASK;
 
@@ -3404,7 +3404,7 @@ dw_fs_xtalt(uint8_t value)
   uint8_t fs_xtalt_val = 0;
   /* Configure the Crystal Trim Setting
     Bits 7:5 must always be set to binary “011”. */
-  fs_xtalt_val = DW_FS_XTAL_RESERVED_MASK | 
+  fs_xtalt_val = DW_FS_XTAL_RESERVED_MASK |
                 (value & DW_XTALT_MASK);
   dw_write_subreg(DW_REG_FS_CTRL, DW_SUBREG_FS_XTALT, DW_SUBLEN_FS_XTALT,
                   (uint8_t *) &fs_xtalt_val);

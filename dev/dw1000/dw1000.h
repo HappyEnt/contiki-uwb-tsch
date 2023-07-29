@@ -54,7 +54,7 @@
 /*================================ Defines ==================================*/
 
 /* frame filtering bits */
-#define DW_CFG_FF_ALL_EN  0x000001FEUL /* Frame filtering options all 
+#define DW_CFG_FF_ALL_EN  0x000001FEUL /* Frame filtering options all
                                           frames allowed */
 #define DW_FFAR 6
 #define DW_FFA4 7
@@ -68,10 +68,10 @@
 #define DW_RX_BUFFER_MAX_LEN 128
 
 /**
- * \brief Defines the len of an ACK 
+ * \brief Defines the len of an ACK
  */
 #define DW_ACK_LEN 5
- 
+
  /* SPI Clock frequency in INIT state: SPI freq <= 3 MHz */
 #define DW_SPI_CLOCK_FREQ_INIT_STATE          3000000
 /*
@@ -79,8 +79,8 @@
 #define DW_SPI_CLOCK_FREQ_IDLE_STATE          20000000
 
 /*
- * DW1000 TIME CLOCK : 499.2 MHz × 128 which is 63.8976 GHz 
- * The System Time Counter is incremented at a rate of 125 MHz 
+ * DW1000 TIME CLOCK : 499.2 MHz × 128 which is 63.8976 GHz
+ * The System Time Counter is incremented at a rate of 125 MHz
  * (more precisely 499.2 MHz × 128 / 512) in units of 512. The nine low-order bits of
  * this register are thus always zero. */
 #define DW_TIMESTAMP_CLOCK  124800000
@@ -126,7 +126,7 @@ typedef enum {
  */
 typedef enum {
   DW_STATE_UNINITIALIZED = 0, /* \brief DW1000 uninitialized state. */
-  DW_STATE_INITIALIZING,      /* \brief DW1000 currently running 
+  DW_STATE_INITIALIZING,      /* \brief DW1000 currently running
                                *  initialization.*/
   DW_STATE_IDLE,              /* \brief DW1000 idle state.*/
   DW_STATE_SLEEP,             /* \brief DW1000 has enetered sleep mode.*/
@@ -155,7 +155,7 @@ typedef enum {
 /**
  * \brief   DW1000 data transfer acces type.
  *
- *      
+ *
  */
 typedef enum {
   DW_READ = 0,
@@ -270,10 +270,10 @@ typedef enum {
 #define DW_PREAMBLE_CODE_23 23 /* DPS preamble code */
 #define DW_PREAMBLE_CODE_24 24 /* DPS preamble code */
 /**
- * \brief The preamble code determines the specific pulse sequence of 
+ * \brief The preamble code determines the specific pulse sequence of
  *        the preamble.
- * Dynamic Preamble Select (DPS) preamble code can be used with a PRF 
- * of 64 MHz for adding security in ranging exchange. 
+ * Dynamic Preamble Select (DPS) preamble code can be used with a PRF
+ * of 64 MHz for adding security in ranging exchange.
  * See the user manual to have more information.
  */
 typedef enum {
@@ -349,9 +349,9 @@ typedef enum {
   E_DW_LDE_REPC_11 = DW_LDE_REPC_11,
   E_DW_LDE_REPC_12 = DW_LDE_REPC_12,
   E_DW_LDE_REPC_13 = DW_LDE_REPC_13,
-  E_DW_LDE_REPC_14 = DW_LDE_REPC_14, 
-  E_DW_LDE_REPC_15 = DW_LDE_REPC_15, 
-  E_DW_LDE_REPC_16 = DW_LDE_REPC_16, 
+  E_DW_LDE_REPC_14 = DW_LDE_REPC_14,
+  E_DW_LDE_REPC_15 = DW_LDE_REPC_15,
+  E_DW_LDE_REPC_16 = DW_LDE_REPC_16,
   E_DW_LDE_REPC_17 = DW_LDE_REPC_17,
   E_DW_LDE_REPC_18 = DW_LDE_REPC_18,
   E_DW_LDE_REPC_19 = DW_LDE_REPC_19,
@@ -625,7 +625,7 @@ void dw_set_preamble_length(dw1000_preamble_length_t preamble_length);
 void dw_set_preamble_code(dw1000_preamble_code_t preamble_code);
 void dw_set_datarate_and_sfd(dw1000_data_rate_t data_rate, dw1000_sfd_type_t sfd_type);
 void dw_set_pac_size(dw1000_pac_size_t pac_size, dw1000_prf_t prf);
-void dw_lde_repc_config(dw1000_preamble_code_t preamble_code, 
+void dw_lde_repc_config(dw1000_preamble_code_t preamble_code,
                     dw1000_data_rate_t data_rate);
 void dw_configure_lde(dw1000_prf_t prf);
 void dw_set_manual_tx_power(dw1000_channel_t channel, dw1000_prf_t prf);
@@ -790,9 +790,9 @@ void dw_write_reg(uint32_t reg_addr, uint16_t reg_len, uint8_t *p_data);
 uint32_t dw_read_reg_32(uint32_t reg_addr, uint16_t reg_len);
 uint64_t dw_read_reg_64(uint32_t reg_addr, uint16_t reg_len);
 /* Sub registers */
-uint32_t dw_read_subreg_32(uint32_t reg_addr, uint16_t subreg_addr, 
+uint32_t dw_read_subreg_32(uint32_t reg_addr, uint16_t subreg_addr,
                            uint16_t subreg_len);
-uint64_t dw_read_subreg_64(uint32_t reg_addr, uint16_t subreg_addr, 
+uint64_t dw_read_subreg_64(uint32_t reg_addr, uint16_t subreg_addr,
                            uint16_t subreg_len);
 /* OTP */
 uint32_t dw_read_otp_32(uint16_t otp_addr);
@@ -809,7 +809,7 @@ uint32_t dw_read_otp_32(uint16_t otp_addr);
  */
 typedef enum {
   DW_SPI_TRANSFER_DONE = 0, /* Indicates this is last transfer in transaction */
-  DW_SPI_TRANSFER_CONT = 1  /* Indicates that there are more transfers to be 
+  DW_SPI_TRANSFER_CONT = 1  /* Indicates that there are more transfers to be
                                done. */
 } dw_spi_transfer_flag_t;
 

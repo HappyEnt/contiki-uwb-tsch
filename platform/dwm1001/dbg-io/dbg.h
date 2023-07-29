@@ -1,8 +1,9 @@
 /*
  * Copyright (c) 2015, Nordic Semiconductor
+ * Copyright (c) 2018, University of Trento, Italy
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
+3 * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
@@ -28,41 +29,39 @@
  *
  */
 /**
- * \addtogroup nrf52832-dev Device drivers
+ * \addtogroup nrf52dk
  * @{
  *
- * \addtogroup nrf52832-lpm Low power mode functions
+ * \addtogroup nrf52dk-dbg-io Debug IO over UART
  * @{
  *
  * \file
- *         A header file for low power mode functions.
+ *         Header file for the debug module.
  * \author
  *         Wojciech Bober <wojciech.bober@nordicsemi.no>
- */
-#ifndef LPM_H
-#define LPM_H
-
-#ifdef SOFTDEVICE_PRESENT
-#include "nrf_soc.h"
-#endif
-
-/**
- * \brief Stop and wait for an event
  *
  */
-static inline void
-lpm_drop(void)
-{
-#ifdef SOFTDEVICE_PRESENT
-  if(nrf_sdh_is_enabled())
-    sd_app_evt_wait();
-  else
-#endif /* SOFTDEVICE_PRESENT */
-  __WFI();
-
-}
-
-#endif /* DEV_LPM_H_ */
+#ifndef DBG_H_
+#define DBG_H_
+/*---------------------------------------------------------------------------*/
+#include "contiki-conf.h"
+/*---------------------------------------------------------------------------*/
+/**
+ * \brief Print a stream of bytes
+ * \param seq A pointer to the stream
+ * \param len The number of bytes to print
+ * \return The number of printed bytes
+ */
+unsigned int dbg_send_bytes(const unsigned char *seq, unsigned int len);
+/**
+ * \brief Print a character to debug output
+ * \param c Character to print
+ * \return Printed character
+ */
+int dbg_putchar(int c);
+/*---------------------------------------------------------------------------*/
+#endif /* DBG_H_ */
+/*---------------------------------------------------------------------------*/
 /**
  * @}
  * @}

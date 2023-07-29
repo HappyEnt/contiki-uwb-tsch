@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015, Nordic Semiconductor
+ * Copyright (c) 2018, University of Trento, Italy
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,43 +28,37 @@
  * SUCH DAMAGE.
  *
  */
+
 /**
- * \addtogroup nrf52832-dev Device drivers
+ * \addtogroup nrf52dk
  * @{
  *
- * \addtogroup nrf52832-lpm Low power mode functions
+ * \addtogroup nrf52dk-devices Device drivers
+ * @{
+ *
+ * \addtogroup nrf52dk-sensors Sensors
+ *  The nRF52 DK exports 4 button sensors and an internal temperature sensor.
  * @{
  *
  * \file
- *         A header file for low power mode functions.
+ *         This file exports a global sensors table.
  * \author
  *         Wojciech Bober <wojciech.bober@nordicsemi.no>
  */
-#ifndef LPM_H
-#define LPM_H
-
-#ifdef SOFTDEVICE_PRESENT
-#include "nrf_soc.h"
-#endif
-
+/*---------------------------------------------------------------------------*/
+#include <string.h>
+#include "contiki.h"
+#include "lib/sensors.h"
+#include "dev/button-sensor.h"
+#include "dev/temperature-sensor.h"
+/*---------------------------------------------------------------------------*/
+SENSORS(
+    &button_sensor,
+    &temperature_sensor
+);
+/*---------------------------------------------------------------------------*/
 /**
- * \brief Stop and wait for an event
- *
- */
-static inline void
-lpm_drop(void)
-{
-#ifdef SOFTDEVICE_PRESENT
-  if(nrf_sdh_is_enabled())
-    sd_app_evt_wait();
-  else
-#endif /* SOFTDEVICE_PRESENT */
-  __WFI();
-
-}
-
-#endif /* DEV_LPM_H_ */
-/**
+ * @}
  * @}
  * @}
  */

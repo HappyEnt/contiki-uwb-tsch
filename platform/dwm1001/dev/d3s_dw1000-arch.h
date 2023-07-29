@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, Nordic Semiconductor
+ * Copyright (c) 2018, University of Trento, Italy
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -14,7 +14,7 @@
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE INSTITUTE AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE INSTITUTE AND CONTRIBUTORS ``as-is'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE INSTITUTE OR CONTRIBUTORS BE LIABLE
@@ -28,68 +28,42 @@
  *
  */
 /**
- * \addtogroup nrf52832-dev Device drivers
- * @{
- *
- * \addtogroup nrf52832-watchdog Watchdog driver
- * @{
- *
  * \file
- *         Contiki compatible watchdog driver implementation.
- * \author
- *         Wojciech Bober <wojciech.bober@nordicsemi.no>
+ *      Platform Dependent DW1000 Driver Header File
+ *
  */
-#include <nrfx_wdt.h>
-#include "app_error.h"
-#include "contiki-conf.h"
 
-static nrfx_wdt_channel_id wdt_channel_id;
-static uint8_t wdt_initialized = 0;
+#ifndef DW1000_ARCH_H_
+#define DW1000_ARCH_H_
+/*---------------------------------------------------------------------------*/
+#include "contiki.h"
+#include "deca_types.h"
+#include "nrf_delay.h"
+/*---------------------------------------------------------------------------*/
+/* DW1000 IRQ (EXTI9_5_IRQ) handler type. */
+typedef void (*dw1000_isr_t)(void);
+/* Function to set a new DW1000 EXTI ISR handler */
+void dw1000_set_isr(dw1000_isr_t new_dw1000_isr);
+/*---------------------------------------------------------------------------*/
+void d3s_dw1000_arch_init();
+void dw1000_arch_reset();
+void dw1000_arch_wakeup_nowait();
+void dw1000_spi_open(void);
+void dw1000_spi_close(void);
+int dw1000_spi_read(uint16 hdrlen, const uint8 *hdrbuf, uint32 len, uint8 *buf);
+int dw1000_spi_write(uint16 hdrlen, const uint8 *hdrbuf, uint32 len, const uint8 *buf);
+void dw1000_spi_set_slow_rate(void);
+void dw1000_spi_set_fast_rate(void);
+int dw1000_disable_interrupt(void);
+void dw1000_enable_interrupt(int irqn_status);
 
-/**
- * \brief WDT events handler.
- */
-static void wdt_event_handler(void)
-{
-  //TODO replace following undefined macro
-  //LEDS_OFF(LEDS_MASK);
-}
-
-static const nrfx_wdt_config_t wdt_default_config = NRFX_WDT_DEAFULT_CONFIG;
+void d3s_dw1000_arch_setup_irq(void);
 /*---------------------------------------------------------------------------*/
-void
-watchdog_init(void)
-{
-  ret_code_t err_code;
-  err_code = nrfx_wdt_init(&wdt_default_config, &wdt_event_handler);
-  APP_ERROR_CHECK(err_code);
-  err_code = nrfx_wdt_channel_alloc(&wdt_channel_id);
-  APP_ERROR_CHECK(err_code);
-  wdt_initialized = 1;
-}
+/* Platform-specific bindings for the DW1000 driver */
+#define writetospi(cnt, header, length, buffer) dw1000_spi_write(cnt, header, length, buffer)
+#define readfromspi(cnt, header, length, buffer) dw1000_spi_read(cnt, header, length, buffer)
+#define decamutexon() dw1000_disable_interrupt()
+#define decamutexoff(stat) dw1000_enable_interrupt(stat)
+#define deca_sleep(t) nrf_delay_ms(t)
 /*---------------------------------------------------------------------------*/
-void
-watchdog_start(void)
-{
-  if(wdt_initialized) {
-    nrfx_wdt_enable();
-  }
-}
-/*---------------------------------------------------------------------------*/
-void
-watchdog_periodic(void)
-{
-  if(wdt_initialized) {
-    nrfx_wdt_channel_feed(wdt_channel_id);
-  }
-}
-/*---------------------------------------------------------------------------*/
-void
-watchdog_reboot(void)
-{
-  NVIC_SystemReset();
-}
-/**
- * @}
- * @}
- */
+#endif /* DW1000_ARCH_H_ */

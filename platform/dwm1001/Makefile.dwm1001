@@ -1,0 +1,111 @@
+# DWM1001 platform makefile
+
+BOARD ?= dwm1001-dev
+
+BOARD_PATHS := $(DWM1001_EXTRA_BOARDS) $(dir $(lastword $(MAKEFILE_LIST)))
+board_makefile := $(wildcard $(foreach BPATH, $(BOARD_PATHS), $(BPATH)/$(BOARD)/Makefile.$(BOARD)))
+
+ifeq ($(strip $(board_makefile)),)
+  $(error Missing board or is misspelled)
+endif
+
+include $(board_makefile)
+BOARD_ROOT_PATH := $(dir $(board_makefile))
+
+#preceed contikidirs with boards path
+CONTIKIDIRS := $(addprefix $(BOARD_ROOT_PATH)/, $(BOARD_DIRS)) $(CONTIKIDIRS)
+
+CONTIKI_TARGET_DIRS += . dev config
+CONTIKI_SOURCEFILES += contiki-main.c temperature-sensor.c bt2uwb-addr.c
+CONTIKI_SOURCEFILES += battery_read.c
+
+# Add DW1000 architecture-dependent drivers
+CONTIKI_SOURCEFILES += d3s_dw1000-arch.c dw1000-dwm-arch.c
+
+# DecaWave DW1000 Drivers
+CONTIKIDIRS += $(CONTIKI)/dev/dw1000 $(CONTIKI)/dev/dw1000/decadriver
+CONTIKI_SOURCEFILES += deca_device.c deca_params_init.c deca_range_tables.c
+# CONTIKI_SOURCEFILES += dw1000.c dw1000-util.c dw1000-driver.c
+
+#To include project-conf (throug contiki.h) in sdk_config of nRF5 SDK
+CFLAGS+=-DUSE_APP_CONFIG
+
+# XXX Include PWM (for the buzzer of Janus platform)
+SDK_SOURCE_FILES += modules/nrfx/drivers/src/nrfx_pwm.c
+
+PRINTF_OVER_UART?=1
+ifeq ($(PRINTF_OVER_UART),1)
+### Use the existing debug I/O in cpu/arm/common
+CONTIKI_TARGET_DIRS += dbg-io
+CONTIKI_SOURCEFILES += dbg.c
+CONTIKIDIRS += $(CONTIKI)/cpu/arm/common/dbg-io
+CONTIKI_CPU_SOURCEFILES += dbg-printf.c dbg-putchar.c dbg-snprintf.c dbg-sprintf.c strformat.c
+endif
+
+CLEAN += *.dwm1001 symbols.*
+
+### Unless the example dictates otherwise, build with code size optimisations switched
+### off
+ifndef SMALL
+	SMALL = 0
+endif
+
+# Set the appropriate NRF52 Revision: custom in our case
+NRF52_DK_REVISION = custom
+
+### Define the CPU directory and pull in the correct CPU makefile.
+# Original implementation for nrf52832 for nrf52832-dk support only BLE radio with IPV6.
+# This it will be matinaed in contiki-conf.h file not here
+
+CONTIKI_CPU=$(CONTIKI)/cpu/nrf52832
+include $(CONTIKI_CPU)/Makefile.nrf52832
+
+MODULES += core/net
+MODULES += core/net/mac
+MODULES += core/net/mac/contikimac
+MODULES += core/net/ip
+MODULES += core/net/llsec
+MODULES += core/net/llsec/noncoresec
+MODULES += dev/dw1000
+
+###############################################################################
+# Login Command
+###############################################################################
+
+# Check if we are running under Windows
+ifeq ($(HOST_OS),Windows)
+	SERIALDUMP ?= $(CONTIKI)/tools/sky/serialdump-windows
+else
+ifeq ($(HOST_OS),Darwin)
+	SERIALDUMP ?= $(CONTIKI)/tools/sky/serialdump-macos
+else
+        # Else assume Linux
+	SERIALDUMP ?= $(CONTIKI)/tools/sky/serialdump-linux
+endif
+endif
+
+UART_BAUDRATE = 115200
+
+login:
+	$(SERIALDUMP) -b$(UART_BAUDRATE) $(PORT)
+
+
+###############################################################################
+# Upload Command
+###############################################################################
+
+motelist:
+	@$(JLINK) -CommanderScript $(dir $(target_makefile))/listEmulator.jlink | awk 'BEGIN {printf("Index\tS/N\n----------------------------\n")} \
+match($$0, "J-Link\\[([[:digit:]]+)\\].*Serial number: ([[:digit:]]*)", m) {printf(" %s\t%s\n",m[1],m[2])}'
+
+%.upload: %.hex %.jlink
+	@echo Flashing: $*.hex
+	$(Q)$(JLINK) $(JLINK_OPTS) -CommanderScript $*.jlink
+
+RTT_TELNET_PORT ?= 19021
+
+connect:
+	$(JLINK) $(JLINK_OPTS) -AutoConnect 1 -RTTTelnetPort $(RTT_TELNET_PORT)
+
+rtt_client:
+	$(NRF52_JLINK_PATH)/JLinkRTTClient -RTTTelnetPort $(RTT_TELNET_PORT)

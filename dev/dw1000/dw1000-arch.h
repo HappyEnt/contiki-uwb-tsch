@@ -62,7 +62,7 @@
 void dw1000_arch_init();
 /*---------------------------------------------------------------------------*/
 /**
- * \brief                 Reads the value from a sub-register on the DW1000 as 
+ * \brief                 Reads the value from a sub-register on the DW1000 as
  *                        a byte stream.
 
  * \param[in] reg_addr    Register address as specified in the manual and by
@@ -74,11 +74,11 @@ void dw1000_arch_init();
  *                        DW_SUBLEN_* defines.
  * \param[out] p_data     Data read from the device.
  */
-void dw_read_subreg(uint32_t reg_addr, uint16_t subreg_addr, 
+void dw_read_subreg(uint32_t reg_addr, uint16_t subreg_addr,
             uint16_t subreg_len, uint8_t *read_buf);
 /*---------------------------------------------------------------------------*/
 /**
- * \brief                 Writes a value to a sub-register on the DW1000 as a 
+ * \brief                 Writes a value to a sub-register on the DW1000 as a
  *                        byte stream.
  *
  * \param[in] reg_addr    Register address as specified in the manual and by
@@ -90,7 +90,7 @@ void dw_read_subreg(uint32_t reg_addr, uint16_t subreg_addr,
  *                        DW_SUBLEN_* defines.
  * \param[in] p_data      A stream of bytes to write to device.
  */
-void dw_write_subreg(uint32_t reg_addr, uint16_t subreg_addr, 
+void dw_write_subreg(uint32_t reg_addr, uint16_t subreg_addr,
             uint16_t subreg_len, const uint8_t *write_buf);
 /*---------------------------------------------------------------------------*/
 /**
@@ -116,7 +116,7 @@ int dw1000_arch_gpio8_read_pin(void);
 /*---------------------------------------------------------------------------*/
 /**
  * Change the SPI frequency to freq.
- * If freq is bigger than the maximum SPI frequency value of the embedeed 
+ * If freq is bigger than the maximum SPI frequency value of the embedeed
  * system set this maximum value.
  **/
 void dw1000_arch_spi_set_clock_freq(uint32_t freq);
@@ -127,16 +127,16 @@ void dw1000_arch_spi_set_clock_freq(uint32_t freq);
 void dw1000_us_delay(int us);
 /*---------------------------------------------------------------------------*/
 /**
- * Configure the embedeed system to allow the transceiver to go in 
- * DEEPSLEEP state. 
+ * Configure the embedeed system to allow the transceiver to go in
+ * DEEPSLEEP state.
  * Disable SPICLK and SPIMISO to avoid leakeage current.
  * Configure SPICLK and SPIMISO in input without pull up resistance or
  * in output in tristate or Hi-Z
  * Configure SPICSn High (default state)
  * Configure WAKEUP port (output and low state) if used to go out
  * of the deepsleep.
- * 
- * WAKEUP is optional (you can use SPICSn), 
+ *
+ * WAKEUP is optional (you can use SPICSn),
  * Do not use SPICSn AND WAKEUP to wakeup the transceiver.
  **/
 void dw1000_arch_init_deepsleep(void);
@@ -148,31 +148,31 @@ typedef enum {
 } dw1000_pin_state;
 
 /**
- * Used in DEEPSLEEP state. 
- * You need to drive HIGH the WAKEUP port or drive LOW the SPICSn port 
+ * Used in DEEPSLEEP state.
+ * You need to drive HIGH the WAKEUP port or drive LOW the SPICSn port
  * for at least 500µs to wakeup the transceiver.
  *
- * You can check if the transceiver have wakeup by reading the GPIO8 state 
- * GPIO8 is drive HIGH when the transceiver comes in the IDLE state 
+ * You can check if the transceiver have wakeup by reading the GPIO8 state
+ * GPIO8 is drive HIGH when the transceiver comes in the IDLE state
  * It take up to 3ms to go out of the deepsleep state.
  *
  * Use DW1000_PIN_ACTIVE to Wakeup the transceiver (WAKEUP high or SPICSn low)
  * DW1000_PIN_SLEEP is the defautl state (WAKEUP low, SPICSn high).
  *
- * 
- * WAKEUP is optional (you can use SPICSn), 
+ *
+ * WAKEUP is optional (you can use SPICSn),
  * do not use SPICSn AND WAKEUP to wakeup the transceiver.
  **/
 void dw1000_arch_wake_up(dw1000_pin_state state);
 /*---------------------------------------------------------------------------*/
 /**
- * Configure the embedeed system to interact with the transceiver. 
+ * Configure the embedeed system to interact with the transceiver.
  * Enable SPICLK and SPIMISO.
  * Configure WAKEUP port (output and low state).
  * Configure SPICSn port (output and high state).
- * 
- * 
- * WAKEUP is optional (you can use SPICSn), 
+ *
+ *
+ * WAKEUP is optional (you can use SPICSn),
  * do not use SPICSn AND WAKEUP to wakeup the transceiver.
  **/
 void dw1000_arch_restore_idle_state(void);

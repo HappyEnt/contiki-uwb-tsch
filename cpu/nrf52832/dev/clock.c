@@ -43,48 +43,86 @@
  *         Wojciech Bober <wojciech.bober@nordicsemi.no>
  *
  */
+#include "contiki.h"
+/*---------------------------------------------------------------------------*/
+#include "nrf.h"
+#include "nrf52832_peripherals.h"
+#include "nrfx_rtc.h"
+#include "nrfx_clock.h"
+#include "nrf_delay.h"
+#include "app_error.h"
+/*---------------------------------------------------------------------------*/
+
 /*---------------------------------------------------------------------------*/
 #include <stdint.h>
 #include <stdbool.h>
-#include "nrf.h"
-#include "nrf_drv_config.h"
-#include "nrf_drv_rtc.h"
-#include "nrf_drv_clock.h"
-#include "nrf_delay.h"
-#include "app_error.h"
-#include "contiki.h"
-#include "platform-conf.h"
 
 /*---------------------------------------------------------------------------*/
-const nrf_drv_rtc_t rtc = NRF_DRV_RTC_INSTANCE(PLATFORM_RTC_INSTANCE_ID); /**< RTC instance used for platform clock */
+#define NRF_DEBUG_PINS 0
+
+#if NRF_DEBUG_PINS
+#include "nrf_gpio.h"
+
+#define PIN1 15 // pin 3 of the RPi header of DWM1001-DEV
+#define PIN2 8  // pin 5 of the RPi header of DWM1001-DEV
+
+#define PIN_INIT(x) nrf_gpio_cfg_output(x);
+#define PIN_SET(x)  NRF_GPIO->OUTSET = (1 << x)
+#define PIN_CLR(x)  NRF_GPIO->OUTCLR = (1 << x)
+#define PIN_TGL(x)  nrf_gpio_pin_toggle(x)
+#else
+#define PIN_INIT(x)
+#define PIN_SET(x)
+#define PIN_CLR(x)
+#define PIN_TGL(x)
+#endif
+
+/*---------------------------------------------------------------------------*/
+/*static*/ const nrfx_rtc_t rtc   = NRFX_RTC_INSTANCE(PLATFORM_CLOCK_RTC_INSTANCE_ID); /**< RTC instance used for platform clock */
+// APP_TIMER_DEF(timer_id);
 /*---------------------------------------------------------------------------*/
 static volatile uint32_t ticks;
-void clock_update(void);
-
-#define TICKS (RTC1_CONFIG_FREQUENCY/CLOCK_CONF_SECOND)
-
+/*---------------------------------------------------------------------------*/
+static inline void
+clock_update(void)
+{
+  // we sometimes miss this interrupt, so compensate the counter here
+  static uint32_t previous = 0;
+  uint32_t current = nrfx_rtc_counter_get(&rtc);
+  ticks += (current - previous) % 0x1000000; // 24-bit counter
+  previous = current;
+  PIN_TGL(PIN1);
+  if (etimer_pending()) {
+    etimer_request_poll();
+  }
+}
 /**
  * \brief Function for handling the RTC0 interrupts
  * \param int_type Type of interrupt to be handled
  */
 static void
-rtc_handler(nrf_drv_rtc_int_type_t int_type)
+rtc_handler(nrfx_rtc_int_type_t int_type)
 {
-  if (int_type == NRF_DRV_RTC_INT_TICK) {
+  if (int_type == NRFX_RTC_INT_TICK) {
     clock_update();
   }
 }
 
 #ifndef SOFTDEVICE_PRESENT
+/* empty event handelr needed by nrfx_clock driver */
+static void clock_event_handler(nrfx_clock_evt_type_t event){}
+
 /** \brief Function starting the internal LFCLK XTAL oscillator.
  */
 static void
 lfclk_config(void)
 {
-  ret_code_t err_code = nrf_drv_clock_init(NULL);
+  // TODO app_timer does not handle lfclk clock
+  ret_code_t err_code = nrfx_clock_init(clock_event_handler);
   APP_ERROR_CHECK(err_code);
+  nrfx_clock_enable();
 
-  nrf_drv_clock_lfclk_request();
+  nrfx_clock_lfclk_start();
 }
 #endif
 
@@ -94,22 +132,39 @@ lfclk_config(void)
 static void
 rtc_config(void)
 {
-  uint32_t err_code;
 
   //Initialize RTC instance
-  err_code = nrf_drv_rtc_init(&rtc, NULL, rtc_handler);
+  // app_timer_init();
+  ret_code_t err_code;
+  // err_code = app_timer_create(&timer_id,
+  //                             APP_TIMER_MODE_REPEATED,
+  //                             rtc_handler);
+  // APP_ERROR_CHECK(err_code);
+
+  // err_code = app_timer_start(timer_id, APP_TIMER_TICKS(1), NULL);
+  // APP_ERROR_CHECK(err_code);
+
+  // Setup the RTC config
+  static nrfx_rtc_config_t app_rtc_config;
+  app_rtc_config.interrupt_priority = NRFX_RTC_DEFAULT_CONFIG_IRQ_PRIORITY;
+  app_rtc_config.prescaler = RTC_FREQ_TO_PRESCALER(NRFX_RTC_DEFAULT_CONFIG_FREQUENCY);
+  app_rtc_config.reliable = NRFX_RTC_DEFAULT_CONFIG_RELIABLE;
+  app_rtc_config.tick_latency = NRFX_RTC_US_TO_TICKS(NRFX_RTC_MAXIMUM_LATENCY_US, NRFX_RTC_DEFAULT_CONFIG_FREQUENCY);
+
+  err_code = nrfx_rtc_init(&rtc, &app_rtc_config, rtc_handler);
   APP_ERROR_CHECK(err_code);
 
   //Enable tick event & interrupt
-  nrf_drv_rtc_tick_enable(&rtc, true);
+  nrfx_rtc_tick_enable(&rtc, true);
 
   //Power on RTC instance
-  nrf_drv_rtc_enable(&rtc);
+  nrfx_rtc_enable(&rtc);
 }
 /*---------------------------------------------------------------------------*/
 void
 clock_init(void)
 {
+  PIN_INIT(PIN1);
   ticks = 0;
 #ifndef SOFTDEVICE_PRESENT
   lfclk_config();
@@ -120,22 +175,16 @@ clock_init(void)
 CCIF clock_time_t
 clock_time(void)
 {
-  return (clock_time_t)(ticks & 0xFFFFFFFF);
-}
-/*---------------------------------------------------------------------------*/
-void
-clock_update(void)
-{
-  ticks++;
-  if (etimer_pending()) {
-    etimer_request_poll();
-  }
+  return ticks;
+  // We cannot use directly the following as the RTC register is 24-bit, 
+  // which breaks Contiki's assumptions about the clock counter
+  //return nrfx_rtc_counter_get(&rtc);
 }
 /*---------------------------------------------------------------------------*/
 CCIF unsigned long
 clock_seconds(void)
 {
-  return (unsigned long)ticks/CLOCK_CONF_SECOND;
+  return ticks/CLOCK_SECOND;
 }
 /*---------------------------------------------------------------------------*/
 void

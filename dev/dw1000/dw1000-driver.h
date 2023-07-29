@@ -55,9 +55,9 @@ void dw1000_driver_enable_interrupt(void);
 void dw1000_driver_disable_interrupt(void);
 int dw1000_driver_interrupt(void);
 
-void dw1000_driver_config(dw1000_channel_t channel, 
-                          dw1000_data_rate_t data_rate, 
-                          dw1000_preamble_length_t preamble_length, 
+void dw1000_driver_config(dw1000_channel_t channel,
+                          dw1000_data_rate_t data_rate,
+                          dw1000_preamble_length_t preamble_length,
                           dw1000_prf_t prf);
 /*===========================================================================*/
 /* Ranging                                                                   */
