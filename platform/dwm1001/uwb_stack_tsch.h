@@ -86,7 +86,7 @@
   #define DW1000_TSCH                 1
   #endif
 
-// #define RADIO_DELAY_MEASUREMENT 1
+#define RADIO_DELAY_MEASUREMENT 0
 
 
   #define DW1000_ARCH_CONF_DMA        1

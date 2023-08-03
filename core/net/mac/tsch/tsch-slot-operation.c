@@ -75,6 +75,13 @@
 /* only enable the TX slot end port, other info comes from dw1000-driver.c */
 // #define DEBUG_SYNC_LOGICAL 1 
 
+// TODO remove all this after development has concluded
+#define TMP_DEBUG_MTM_LOCALISATION 0
+#if TMP_DEBUG_MTM_LOCALISATION
+#define _PRINTF(...) printf(__VA_ARGS__)
+#else
+#define _PRINTF(...)
+#endif
 
 #define PRINTADDR(addr) printf(" %02x%02x:%02x%02x:%02x%02x:%02x%02x ", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7]) 
 #ifdef DEBUG_GPIO_TSCH
@@ -302,6 +309,11 @@ static PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t));
   static PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t));
   static PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t));
 #endif /* TSCH_LOCALISATION*/
+
+#if TSCH_MTM_LOCALISATION
+  static PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t));
+  /* static PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t)); */
+#endif
 #if TSCH_CHORUS
   #if TSCH_CHORUS_NODE_TYPE == CHORUS_INITIATOR_NODE
   static PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t));
@@ -438,6 +450,8 @@ tsch_schedule_slot_operation(struct rtimer *tm, rtimer_clock_t ref_time, rtimer_
   /* Subtract RTIMER_GUARD before checking for deadline miss
    * because we can not schedule rtimer less than RTIMER_GUARD in the future */
   int missed = check_timer_miss(ref_time, offset - RTIMER_GUARD, now);
+
+  _PRINTF("tsch_schedule_slot_operation: now=%lu, ref_time=%lu, offset=%lu\n", now, ref_time, offset);
 
   if(missed) {
     TSCH_LOG_ADD(tsch_log_message,
@@ -1249,7 +1263,8 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
             }
           }
         #else
-          TSCH_SCHEDULE_AND_YIELD(&slot_operation_pt, t, current_slot_start- US_TO_RTIMERTICKS(150), 0, "wait");
+          /* printf("current_slot_start %lu\n", current_slot_start); */
+          /* TSCH_SCHEDULE_AND_YIELD(&slot_operation_pt, t, current_slot_start- US_TO_RTIMERTICKS(150), 0, "wait"); */
         #endif /* TSCH_SLEEP */
 
         TSCH_WAIT(&slot_operation_pt, t, current_slot_start, 0, "wait");
@@ -2732,6 +2747,11 @@ tsch_slot_operation_start(void)
     /* Update current slot start */
     prev_slot_start = current_slot_start;
     current_slot_start += time_to_next_active_slot;
+
+    _PRINTF("current_slot_start : %lu\n", current_slot_start);
+    _PRINTF("time_to_next_active_slot : %lu\n", time_to_next_active_slot);
+    _PRINTF("prev_slot_start : %lu\n", prev_slot_start);
+    
   } while(!tsch_schedule_slot_operation(&slot_operation_timer, prev_slot_start, time_to_next_active_slot, "association"));
 }
 /*---------------------------------------------------------------------------*/
