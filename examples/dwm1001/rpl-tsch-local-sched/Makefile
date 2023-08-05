@@ -22,7 +22,7 @@ ifeq ($(MAKE_WITH_ORCHESTRA),1)
 CFLAGS += -DWITH_ORCHESTRA=1
 else
 # add schedule.c to source files
-PROJECT_SOURCEFILES += schedule.c demo_schedule.c addr_map.c
+PROJECT_SOURCEFILES += schedule.c
 endif
 
 ifeq ($(MAKE_WITH_SECURITY),1)

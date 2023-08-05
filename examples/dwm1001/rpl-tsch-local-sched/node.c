@@ -47,7 +47,6 @@
 #include "orchestra.h"
 #else
 #include "schedule.h"
-#include "demo_schedule.h"
 #endif
 
 #include "leds.h"
@@ -265,8 +264,7 @@ PROCESS_THREAD(node_process, ev, data)
   // we add one more slotframe for ranging exchange
 #else
   // pass linkaddress
-  init_custom_schedules(&linkaddr_node_addr);
-  load_schedule(eb_shared_schedule, sizeof(eb_shared_schedule)/sizeof( struct schedule_link));
+  init_custom_schedule();
 #endif
 
   // delay 5 second before starting
@@ -298,19 +296,7 @@ PROCESS_THREAD(node_process, ev, data)
 
     // if tsch_is_associated add for each neighbor a ranging slot
     if(tsch_is_associated) {
-    /*     tsch_schedule_print(); */
-    /*     print_network_status(); */
-    /*     // loop through ipv6 neighbor table */
-    /*     uip_ds6_nbr_t *nbr; */
-    /*     for(nbr = nbr_table_head(ds6_neighbors); */
-    /*         nbr != NULL; */
-    /*         nbr = nbr_table_next(ds6_neighbors, nbr)) { */
-    /*         // add_ranging_slot_for_neighbor(&nbr->ipaddr); */
-    /*         // print neighbor ip */
-    /*         printf("neighbor ip: "); */
-    /*         uip_debug_ipaddr_print(&nbr->ipaddr); */
-    /*         printf("\n"); */
-    /*     } */
+        rpl_print_neighbor_list();
         leds_toggle(LEDS_3);        
     }
 

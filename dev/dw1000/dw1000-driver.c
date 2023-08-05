@@ -1783,7 +1783,6 @@ dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate,
  **/
 void
 dw1000_set_tsch_channel(uint8_t channel){
-    printf("dw1000_set_tsch_channel %d\n", channel);
   switch(channel){
     case 0:
       dw1000_conf.channel = DW_CHANNEL_1;
