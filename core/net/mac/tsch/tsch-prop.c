@@ -45,17 +45,102 @@
 #include "net/mac/tsch/tsch-queue.h"
 #include "net/mac/tsch/tsch-schedule.h"
 #include "dev/radio.h"
-
+#include "memb.h"
 
 #include <stdio.h>
 #include <string.h>
 
 
+#if TSCH_MTM_LOCALISATION
+LIST(measurement_list);
+MEMB(mtm_prop_timestamp_memb, struct mtm_prop_timestamp, TSCH_MTM_PROP_MAX_MEASUREMENT);
+
+void add_mtm_reception_timestamp(struct tsch_neighbor *n, uint64_t rx_timestamp) {
+    struct mtm_prop_timestamp *t = NULL;
+
+    t = memb_alloc(&mtm_prop_timestamp_memb);
+
+    if (t != NULL) {
+        list_add(measurement_list, t);
+    }
+}
+
+
+// We put functionality regarding package creation here for now. This allows the measurement_list to
+// remain inside this functional unit and not leak out.
+int tsch_packet_create_multiranging_packet(
+    uint8_t *buf,
+    int buf_size,
+    const linkaddr_t *dest_addr,
+    uint8_t seqno,
+    uint64_t tx_timestamp
+    )
+{
+  uint8_t curr_len = 0;
+  frame802154_t p;
+
+  memset(&p, 0, sizeof(p));
+  p.fcf.frame_type = FRAME802154_DATAFRAME;
+  p.fcf.frame_version = FRAME802154_IEEE802154E_2012;
+  p.fcf.ie_list_present = 0;
+  /* Compression unset. According to IEEE802.15.4e-2012:
+   * - if no address is present: elide PAN ID
+   * - if at least one address is present: include exactly one PAN ID (dest by default) */
+  p.fcf.panid_compression = 0;
+  p.dest_pid = IEEE802154_PANID;
+  p.seq = seqno;
+
+  if(dest_addr != NULL) {
+    p.fcf.dest_addr_mode = LINKADDR_SIZE > 2 ? FRAME802154_LONGADDRMODE : FRAME802154_SHORTADDRMODE;;
+    linkaddr_copy((linkaddr_t *)&p.dest_addr, dest_addr);
+  }
+
+  p.fcf.src_addr_mode = LINKADDR_SIZE > 2 ? FRAME802154_LONGADDRMODE : FRAME802154_SHORTADDRMODE;;
+  p.src_pid = IEEE802154_PANID;
+  linkaddr_copy((linkaddr_t *)&p.src_addr, &linkaddr_node_addr);
+
+#if LLSEC802154_ENABLED
+  if(tsch_is_pan_secured) {
+    p.fcf.security_enabled = 1;
+    p.aux_hdr.security_control.security_level = TSCH_SECURITY_KEY_SEC_LEVEL_ACK;
+    p.aux_hdr.security_control.key_id_mode = FRAME802154_1_BYTE_KEY_ID_MODE;
+    p.aux_hdr.security_control.frame_counter_suppression = 1;
+    p.aux_hdr.security_control.frame_counter_size = 1;
+    p.aux_hdr.key_index = TSCH_SECURITY_KEY_INDEX_ACK;
+  }
+#endif /* LLSEC802154_ENABLED */
+
+  if((curr_len = frame802154_create(&p, buf)) == 0) {
+    return 0;
+  }
+
+  // add tx_timestamp
+  memcpy(&buf[curr_len], &tx_timestamp, sizeof(uint64_t));
+  curr_len = curr_len + sizeof(uint64_t);
+
+  // iterate over list of measurements and add each timestamp to the packet
+  /* struct mtm_prop_timestamp *t = NULL; */
+  
+  /* for(t = list_head(measurement_list); t != NULL; t = list_item_next(t)) { */
+  /*     memcpy(&buf[curr_len], &t->rx_timestamp, sizeof(uint64_t)); */
+  /*     curr_len = curr_len + sizeof(uint64_t); */
+  /* } */
+
+  /* // free all allocated memory for all measurements again */
+  /* for(t = list_head(measurement_list); t != NULL; t = list_item_next(t)) { */
+  /*     list_remove(measurement_list, t); */
+  /*     memb_free(&mtm_prop_timestamp_memb, t); */
+  /* } */
+  
+  return curr_len;
+}
+#endif
+
 #ifndef TSCH_LOC_THREAD
   PROCESS(TSCH_PROP_PROCESS, "TSCH propagation time process");
 
   /*---------------------------------------------------------------------------*/
-  /* Protothread for slot operation, called by update_neighbor_prop_time() 
+  /* Protothread for slot operation, called by update_neighbor_prop_time()
    * function. "data" is a struct tsch_neighbor pointer.*/
   PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
   {

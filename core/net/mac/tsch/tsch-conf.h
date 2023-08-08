@@ -109,7 +109,7 @@
   #define TSCH_ACK_GUARD                     122
 
   /* Delay between the end of reception of a message and the start of the transmission of ACK ( start of the preamble) */
-  #define TSCH_ACK_DELAY                     610 
+  #define TSCH_ACK_DELAY                     610
 
   /* MIN slot frame duration:
     2 RX_GUARD + T_SRH + TX_MAX + ACK_DELAY + T_SRH + ACK_MAX + ACK_GUARD
@@ -121,7 +121,7 @@
 
 
   // #define TSCH_CONF_ADAPTIVE_TIMESYNC 0
-  #if DW1000_DATA_RATE == DW_DATA_RATE_6800_KBPS
+  #if DW1000_CONF_DATA_RATE == DWT_BR_6M8
     /* Calculate packet tx/rx duration in RTIMER ticks based on sent
      * packet length in bytes with 802.15.4 UWB 110, 850 or 6810 kbps data rate.
      * One byte = 32us at 250 kbps.
@@ -139,14 +139,14 @@
 
     #undef TSCH_PACKET_DURATION_US
     #define TSCH_PACKET_DURATION_US(len) (22 + (117 * (len + 2))/100)
-    /* MAX ACK frame = 43 bytes 
-    The following value are based on the real transmission duration 
+    /* MAX ACK frame = 43 bytes
+    The following value are based on the real transmission duration
     ( including the reedSolomon) */
     #define TSCH_DEFAULT_TS_MAX_ACK            78   /* do not include SHR */
     #define TSCH_DEFAULT_TS_MAX_TX             177  /* do not include SHR */
     /* min slot frame duration (premable 128) 4225 (loc) or 2563 (data) */
 
-  #elif DW1000_DATA_RATE == DW_DATA_RATE_850_KBPS
+  #elif DW1000_CONF_DATA_RATE == DWT_BR_850K
     #undef TSCH_PACKET_DURATION
     #define REEDSOLOMON_OVERRED       130
     #define TSCH_PACKET_DURATION(len) (US_TO_RTIMERTICKS(REEDSOLOMON_OVERRED + 22 + (94 * (len + 2))/10))
@@ -158,7 +158,7 @@
 
     /* min slot frame duration (premable 512) 6845 (loc) or 4570 (data) */
 
-  #elif DW1000_DATA_RATE == DW_DATA_RATE_110_KBPS
+  #elif DW1000_CONF_DATA_RATE == DWT_BR_110K
     #undef TSCH_PACKET_DURATION
     #define REEDSOLOMON_OVERRED       130
     #define TSCH_PACKET_DURATION(len) (US_TO_RTIMERTICKS(REEDSOLOMON_OVERRED + 172 + (72 * (len + 2))))
@@ -172,7 +172,7 @@
   /* min slot frame duration (premable 1024) 22397 (loc) or 17917 (data) */
   #else
     #error "TSCH: Unsupported UWB Data rate."
-  #endif /* DW1000_DATA_RATE */
+  #endif /* DW1000_CONF_DATA_RATE */
 
 
   #if TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 5000
@@ -187,14 +187,14 @@
     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    25000
   #endif /*TSCH_CONF_DEFAULT_TIMESLOT_LENGTH */
 
-  /* In UWB we can not perform a CCA. 
+  /* In UWB we can not perform a CCA.
       We define TS_CCA and TS_CCA_OFFSET but there are not used */
   #define TSCH_DEFAULT_TS_CCA_OFFSET         500     /* not relevant */
   #define TSCH_DEFAULT_TS_CCA                128     /* not relevant */
   #define TSCH_DEFAULT_TS_RX_TX              70      /* not used */
 
-  /* TSCH implementation requierd to PAWN a new protothread at the start 
-      of the RX and TX slot, one a 8MHz MCU it take more than 750µs*/
+  /* The TSCH implementation requires spawning a new protothread at the start
+      of the RX and TX slot, on a 8MHz MCU it take more than 750µs*/
   #define TSCH_MIN_START_SLOT                400
   #define TSCH_RX_OFFSET                     MAX(TSCH_RX_GUARD, TSCH_MIN_START_SLOT)
 
@@ -211,6 +211,7 @@
 
   /* Localisation configuration */
   #define TSCH_CONF_LOCALISATION              1
+  #define TSCH_CONF_MTM_LOCALISATION          1
 
   #define TSCH_LOC_RX_GUARD           519
   #define TSCH_LOC_REPLY_DELAY        450
@@ -334,7 +335,7 @@
 #define TSCH_CHANNEL_SCAN_DURATION CLOCK_SECOND
 #endif
 
-/* Used to start the slot in advance to avoid miss deadline because 
+/* Used to start the slot in advance to avoid miss deadline because
     of the slow processing speed, usefull when you reduce the RX_OFFSET value*/
 #ifdef TSCH_CONF_SLOT_START_BEFOREHAND
 #define TSCH_SLOT_START_BEFOREHAND TSCH_CONF_SLOT_START_BEFOREHAND
@@ -345,16 +346,24 @@
 /* Used to enable TSCH localisation slot */
 #ifdef TSCH_CONF_LOCALISATION
 #define TSCH_LOCALISATION TSCH_CONF_LOCALISATION
+#ifdef TSCH_CONF_MTM_LOCALISATION
+#define TSCH_MTM_LOCALISATION TSCH_CONF_MTM_LOCALISATION
+#else
+#define TSCH_MTM_LOCALISATION 0
+#endif
 #else
 #define TSCH_LOCALISATION 0
-#endif 
+#endif
+
+
+
 
 /* Used to enable TSCH Chorus slot */
 #ifdef TSCH_CONF_CHORUS
 #define TSCH_CHORUS TSCH_CONF_CHORUS
 #else
 #define TSCH_CHORUS 0
-#endif 
+#endif
 
 /* Used to define the type of node in Chorus (Anchors, mobile node, initiator) */
 #ifdef TSCH_CONF_CHORUS_NODE_TYPE
@@ -362,7 +371,7 @@
 #else
 /* Node do not participate in chorus */
 #define TSCH_CHORUS_NODE_TYPE 0
-#endif 
+#endif
 
 /* Used to define the anchors offset*/
 #ifdef TSCH_CONF_CHORUS_FIRST_ANCHOR_ID
@@ -378,15 +387,15 @@
 #else
 /* By default the TX offset between anchors is 200 ns*/
 #define TSCH_CHORUS_TX_OFFSET 200
-#endif 
+#endif
 
-/* Used to define the reply time between the reception of the initiator 
+/* Used to define the reply time between the reception of the initiator
  * request and the anchors response TX in us*/
 #ifdef TSCH_CONF_CHORUS_REPLY_TIME
 #define TSCH_CHORUS_REPLY_TIME TSCH_CONF_CHORUS_REPLY_TIME
 #else
 /* By default the reply time is 1000 us*/
 #define TSCH_CHORUS_REPLY_TIME 1000
-#endif 
+#endif
 
 #endif /* __TSCH_CONF_H__ */

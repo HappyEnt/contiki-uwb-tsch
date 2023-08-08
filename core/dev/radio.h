@@ -183,6 +183,12 @@ enum {
    * */
   RADIO_LOC_TX_DELAYED_US,
 
+    /*
+   * Set a delayed transmission based on the current device time.
+   * The delay is set in micro second.
+   * */
+  RADIO_LOC_TX_DELAYED_US_MTM,
+
   /*
    * Set a delayed reception based on the previews transmission.
    * The delay is set in micro second.

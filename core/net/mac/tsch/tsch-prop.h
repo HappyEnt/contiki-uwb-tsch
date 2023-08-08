@@ -46,14 +46,40 @@ PROCESS_NAME(TSCH_PROP_PROCESS);
 
 /********** Type *********/
 
-/* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
+#if TSCH_MTM_LOCALISATION
 
+// depends on frame length
+#define TSCH_MTM_PROP_MAX_NEIGHBORS 20
+// defines the maximum amount of measurements we will store
+#define TSCH_MTM_PROP_MAX_MEASUREMENT 20
+
+struct mtm_prop_timestamp {
+    struct mtm_prop_timestamp *next;
+    struct tsch_neighbor *neighbor;    
+    uint64_t rx_timestamp;
+};
+
+void add_mtm_reception_timestamp(struct tsch_neighbor *n, uint64_t rx_timestamp);
+
+/* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
+int tsch_packet_create_multiranging_packet(
+    uint8_t *buf,
+    int buf_size,
+    const linkaddr_t *dest_addr,
+    uint8_t seqno,
+    uint64_t tx_timestamp);
+
+#endif // TSCH_MTM_LOCALISATION
 /********** Functions *********/
+
+#if TSCH_MTM_LOCALISATION
+/* void  */
+#endif
 
 void update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time, struct tsch_asn_t * asn, uint8_t tsch_channel);
 
-int32_t compute_prop_time(int32_t initiator_roundtrip, 
-      int32_t initiator_reply, int32_t replier_roundtrip, 
+int32_t compute_prop_time(int32_t initiator_roundtrip,
+      int32_t initiator_reply, int32_t replier_roundtrip,
       int32_t replier_reply);
 
 #endif /* __TSCH_LOC_H__ */

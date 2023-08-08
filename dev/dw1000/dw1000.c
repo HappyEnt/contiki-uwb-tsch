@@ -88,7 +88,7 @@ dw1000_base_driver dw1000;
 void
 dw1000_init()
 {
-  PRINTF("Decawave Initialising begin\r\n");
+  PRINTF("Decawave Initialization\r\n");
 
   dw1000.state = DW_STATE_INITIALIZING;
   dw1000.auto_ack = 0;
@@ -1815,7 +1815,8 @@ dw_set_extended_addr(uint64_t ext_addr)
 uint64_t
 dw_get_device_time()
 {
-  return dw_read_reg_64(DW_REG_SYS_TIME, DW_LEN_SYS_TIME);
+  uint64_t result = dw_read_reg_64(DW_REG_SYS_TIME, DW_LEN_SYS_TIME);
+  return result;
 }
 /*===========================================================================*/
 /* ADC                                                                       */
@@ -2612,21 +2613,33 @@ dw_get_clock_offset(void){
 void
 dw_set_dx_timestamp(uint64_t timestamp)
 {
-  dw_write_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, (uint8_t *) &timestamp);
-
+    uint8_t data[5];
+    data[0] = timestamp & 0xFF;
+    data[1] = (timestamp >> 8) & 0xFF;
+    data[2] = (timestamp >> 16) & 0xFF;
+    data[3] = (timestamp >> 24) & 0xFF;
+    data[4] = (timestamp >> 32) & 0xFF;
+    
+  dw_write_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, data);
+      
   uint32_t sys_status = 0UL;
   dw_read_subreg(DW_REG_SYS_STATUS, 0x0, 4, (uint8_t*) &sys_status);
   if((sys_status & DW_HPDWARN_MASK) != 0){
     printf("dw_set_dx_timestamp error\n");
   }
 }
+
+
 /**
  * \brief Getter for the delayed transmit/receive register.
  */
 uint64_t
 dw_get_dx_timestamp()
 {
-  return dw_read_reg_64(DW_REG_DX_TIME, DW_LEN_DX_TIME) & 0x000000FFFFFFFFFFULL;
+  uint64_t timestamp = 0ULL;
+  timestamp = (dw_read_reg_64(DW_REG_DX_TIME, DW_LEN_DX_TIME)) & 0xFFFFFFFFFFULL;
+  
+  return timestamp;
 }
 /**
  * \brief Enables interrupts as specified in parameter mask. Previous values in
@@ -3063,16 +3076,24 @@ dw_read_reg(uint32_t reg_addr, uint16_t reg_len, uint8_t *pData)
  * \return             A 32-bit unsigned integer read from a register
  *                     of the dw1000.
  */
+
 uint32_t
 dw_read_reg_32(uint32_t reg_addr, uint16_t reg_len)
 {
   uint32_t result = 0UL;
+  uint8_t read_bytes[4];
   /* avoid memory corruption */
   assert(reg_len <= 4);
 
-  dw_read_reg(reg_addr, reg_len, (uint8_t *)&result);
+  dw_read_reg(reg_addr, reg_len, read_bytes);
+
+  for(int i = 0; i < reg_len; i++) {
+    result |= (uint32_t)read_bytes[i] << (i * 8);
+  }
+
   return result;
 }
+
 /**
  * \brief Reads the value from a register on the dw1000 as a 64-bit integer.
  * \param[in] reg_addr      Register address as specified in the manual or by
@@ -3086,11 +3107,17 @@ uint64_t
 dw_read_reg_64(uint32_t reg_addr, uint16_t reg_len)
 {
   uint64_t result = 0ULL;
+  uint8_t read_bytes[8];
 
   /* avoid memory corruption */
   assert(reg_len <= 8);
 
-  dw_read_reg(reg_addr, reg_len, (uint8_t *)&result);
+  dw_read_reg(reg_addr, reg_len, read_bytes);
+
+  for(int i = 0; i < reg_len; i++) {
+      result |= ((uint64_t)read_bytes[i]) << (i * 8);
+  }
+  
   return result;
 }
 /**

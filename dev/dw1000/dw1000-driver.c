@@ -268,6 +268,7 @@ static volatile uint16_t last_packet_timestamp = 0;
 
 /* start private function */
 void dw1000_schedule_tx(uint16_t delay_us);
+void dw1000_schedule_tx_mtm(uint16_t delay_us);
 void dw1000_schedule_tx_to_rx(uint16_t delay_us);
 void dw1000_schedule_rx_to_rx(uint16_t delay_us);
 void dw1000_update_frame_quality(void);
@@ -531,7 +532,7 @@ dw1000_driver_transmit(unsigned short payload_len)
   }
   ENERGEST_ON(ENERGEST_TYPE_TRANSMIT);
 
-  if(dw1000_is_delayed_tx){
+  if(dw1000_is_delayed_tx) {
     /* wait the effective start of the transmission */
     uint64_t sys_time = 0ULL, dx_time = 0ULL;
 
@@ -541,18 +542,18 @@ dw1000_driver_transmit(unsigned short payload_len)
     if(sys_time > dx_time){
       printf("dw1000_driver_transmit timeout %lu\n", RADIO_TO_US(sys_time-dx_time));
     }
-    /* We wait for a maximum of 2ms to be improve in case of lower bitrate */
+    /* We wait for a maximum of 5ms to be improve in case of lower bitrate */
     BUSYWAIT_UPDATE_UNTIL(
                     dw_read_reg(DW_REG_SYS_TIME, DW_LEN_SYS_TIME, (uint8_t *)&sys_time);\
                     dw_read_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, (uint8_t *)&dx_time);\
                     watchdog_periodic();,
                     (sys_time > dx_time),
                     (5000));
-    if(sys_time < dx_time){
+    if(sys_time < dx_time) {
       printf("dw1000_driver_transmit wait too long %lu\n", RADIO_TO_US(dx_time-sys_time));
     }
   }
-  else{
+  else {
     /* No wait for response, no delayed transmission */
     dw_init_tx(0, 0);
   }
@@ -813,6 +814,7 @@ dw1000_driver_receiving_packet(void)
   PRINTF("dw1000_driver_receiving_packet\r\n");
   uint64_t sys_status = dw_read_reg_64(DW_REG_SYS_STATUS,
                               DW_LEN_SYS_STATUS);
+
   /* return if we currently receiving a message and we don't have finish to
   receive it */
   return ((sys_status & (DW_RXPRD_MASK     /* Receiver preamble detected */
@@ -1380,6 +1382,16 @@ dw1000_driver_set_object(radio_param_t param,
     uint16_t schedule = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
     // printf("schedule %d \n", schedule);
     dw1000_schedule_tx(schedule);
+
+    return RADIO_RESULT_OK;
+  }
+  else if(param == RADIO_LOC_TX_DELAYED_US_MTM){
+    if(size != 2 || !src) {
+      return RADIO_RESULT_INVALID_VALUE;
+    }
+    uint16_t delay = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
+    printf("d %d \n", delay);
+    dw1000_schedule_tx_mtm(delay);
 
     return RADIO_RESULT_OK;
   }
@@ -1979,6 +1991,31 @@ dw1000_schedule_tx(uint16_t delay_us)
 }
 
 /**
+ * \brief Create delayed transmission based on the current device time.
+ *
+ * TODO Wir backen alle unser eigenes Brot
+ * NOTE: The transceiver need to be in IDLE when invocking a delayed transmition.
+ */
+void
+dw1000_schedule_tx_mtm(uint16_t delay_us)
+{
+  uint64_t schedule_time = dw_get_device_time();
+  /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
+  schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
+  
+  schedule_time = schedule_time + US_TO_RADIO(delay_us);
+
+  dw_set_dx_timestamp(schedule_time);
+
+  printf("schedule time is: %u\n", (uint32_t)(schedule_time >> 8));
+  printf("schedule readback: %u\n", (uint32_t)(dw_get_dx_timestamp() >> 8));
+  
+  dw1000_is_delayed_tx = 1;
+  dw_init_tx(0,1);
+}
+
+
+/**
  * \brief Configures the DW1000 to be ready to receive a ranging response
  *          based on the lasted sended messages. The delay is in micro seconds.
  *        /!\ Private function.
@@ -1991,8 +2028,6 @@ dw1000_schedule_tx_to_rx(uint16_t delay_us)
   schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
   /* The 10nd bit have a "value" of 125Mhz */
   schedule_time= schedule_time + US_TO_RADIO(delay_us);
-
-  // printf("schedule rx time %llu\n", (schedule_time-(dw_get_tx_timestamp()&DW_TIMESTAMP_CLEAR_LOW_9)));
 
   dw_set_dx_timestamp(schedule_time);
   dw_init_delayed_rx();

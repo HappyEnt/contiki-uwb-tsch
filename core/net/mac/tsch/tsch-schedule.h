@@ -92,10 +92,17 @@
 
 /* 802.15.4e link types.
  * LINK_TYPE_PROP for propagation time measurement (Two way ranging protocol).
- * LINK_TYPE_CHORUS for Chorus scheme localisation, LINK_OPTION_TX for the initiator, LINK_OPTION_RX for anchors and mobile nodes. 
- * LINK_TYPE_ADVERTISING_ONLY is an extra one: for EB-only links. 
+ * LINK_TYPE_CHORUS for Chorus scheme localisation, LINK_OPTION_TX for the initiator, LINK_OPTION_RX for anchors and mobile nodes.
+ * LINK_TYPE_ADVERTISING_ONLY is an extra one: for EB-only links.
  **/
-enum link_type { LINK_TYPE_NORMAL, LINK_TYPE_ADVERTISING, LINK_TYPE_PROP, LINK_TYPE_ADVERTISING_ONLY, LINK_TYPE_CHORUS };
+enum link_type {
+    LINK_TYPE_NORMAL,
+    LINK_TYPE_ADVERTISING,
+    LINK_TYPE_PROP,
+    LINK_TYPE_ADVERTISING_ONLY,
+    LINK_TYPE_CHORUS,
+    LINK_TYPE_PROP_MTM
+};
 
 struct tsch_link {
   /* Links are stored as a list: "next" must be the first field */
