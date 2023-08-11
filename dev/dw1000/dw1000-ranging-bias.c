@@ -33,6 +33,10 @@
 #include <stdlib.h>
 
 #include "dw1000.h"
+#include "dw1000-driver.h"
+#include "cc.h"
+
+#include "dw1000-ranging-bias.h"
 
 /* number of ranging bias correction for each PRF */
 #define NUM_16M_OFFSET    (37)
@@ -42,11 +46,11 @@
 #define NUM_CH_SUPPORTED   8
 
 /* Only channels 1,2,3 and 5 are in the narrow band tables */
-const uint8_t chan_idxnb[NUM_CH_SUPPORTED] = {0, 0, 1, 2, 0, 3, 0, 0}; 
+const uint8_t chan_idxnb[NUM_CH_SUPPORTED] = {0, 0, 1, 2, 0, 3, 0, 0};
 /* 0nly channels 4 and 7 are in in the wide band tables */
 const uint8_t chan_idxwb[NUM_CH_SUPPORTED] = {0, 0, 0, 0, 0, 0, 0, 1};
 /*-----------------------------------------------------------------------------
- *  Range Bias Correction TABLES of range values in integer units of 25 cm, 
+ *  Range Bias Correction TABLES of range values in integer units of 25 cm,
  *  for 8-bit unsigned storage, MUST END IN 255 !!!!!!
  *----------------------------------------------------------------------------*/
 
@@ -60,7 +64,7 @@ const uint8_t chan_idxwb[NUM_CH_SUPPORTED] = {0, 0, 0, 0, 0, 0, 0, 1};
 #define CENTIMETER_TO_DWTIME 2.13139451293f
 
 /*-----------------------------------------------------------------------------
- * range25cm16PRFnb: Range Bias Correction table for narrow band channels at 
+ * range25cm16PRFnb: Range Bias Correction table for narrow band channels at
  *  16 MHz PRF, NB: !!!! each MUST END IN 255 !!!!
  *----------------------------------------------------------------------------*/
 
@@ -234,7 +238,7 @@ const uint8_t range25cm16PRFnb[4][NUM_16M_OFFSET] =
 
 
 /*-----------------------------------------------------------------------------
- * range25cm16PRFwb: Range Bias Correction table for wide band channels at 
+ * range25cm16PRFwb: Range Bias Correction table for wide band channels at
  *  16 MHz PRF, NB: !!!! each MUST END IN 255 !!!!
  *---------------------------------------------------------------------------*/
 
@@ -647,13 +651,13 @@ const uint8_t range25cm64PRFwb[2][NUM_64M_OFFSETWB] =
 }; /* end range25cm64PRFwb */
 
 
-/** 
- * \brief This function is used to return the range bias correction 
+/**
+ * \brief This function is used to return the range bias correction
  *        need for TWR with DW1000 units.
- * 
- * \param[in]  channel   Specifies the operating channel 
- *                        (e.g. 1, 2, 3, 4, 5, 6 or 7) 
- * \param[in]  range  The calculated distance before correction 
+ *
+ * \param[in]  channel   Specifies the operating channel
+ *                        (e.g. 1, 2, 3, 4, 5, 6 or 7)
+ * \param[in]  range  The calculated distance before correction
  *                      (in DecaWave time unit)
  * \param[in]  prf    This is the PRF e.g. DW_PRF_16_MHZ or DW_PRF_64_MHZ
  *
@@ -661,22 +665,24 @@ const uint8_t range25cm64PRFwb[2][NUM_64M_OFFSETWB] =
  *          The final ranging value can be compute has follow: range - output
  */
 int32_t
-dw1000_getrangebias(uint8_t channel, uint16_t range, uint8_t prf)
+dw1000_getrangebias(uint8_t tsch_channel, uint16_t range)
 {
-  /* first get the lookup index that corresponds to given range for 
+  /* first get the lookup index that corresponds to given range for
    *  a particular channel at 16M PRF */
   uint8_t i = 0;
   uint8_t chanIdx = 0;
   int8_t cmoffseti = 0;  /* integer number of CM offset */
   int16_t offset = 0;  /* final offset result in metres */
+  uint8_t prf = dw1000_get_tsch_channel_prf(tsch_channel);
+  uint8_t channel = dw1000_get_tsch_channel_phy_channel(tsch_channel);
 
   /* NB: note we may get some small negitive values e.g. up to -50 cm. */
 
   /* convert range to integer number of 25cm values. */
-  uint8_t rangeint25cm = (uint8_t) (range / 53);       
+  uint8_t rangeint25cm = (uint8_t) (range / 53);
 
-  if (rangeint25cm > 255) 
-    /* make sure it matches largest value in table 
+  if (rangeint25cm > 255)
+    /* make sure it matches largest value in table
         (all tables end in 255 !!!!) */
     rangeint25cm = 255;
 
@@ -688,7 +694,7 @@ dw1000_getrangebias(uint8_t channel, uint16_t range, uint8_t prf)
       case 7:
       {
         chanIdx = chan_idxwb[channel];
-        /* find index in table corresponding to range*/ 
+        /* find index in table corresponding to range*/
         while (rangeint25cm > range25cm16PRFwb[chanIdx][i]) i++;
         cmoffseti = i + CM_OFFSET_16M_WB; /* nearest centimeter correction */
       }
@@ -719,7 +725,7 @@ dw1000_getrangebias(uint8_t channel, uint16_t range, uint8_t prf)
       {
         chanIdx = chan_idxnb[channel];
         /* find index in table corresponding to range */
-        while (rangeint25cm > range25cm64PRFnb[chanIdx][i]) i++; 
+        while (rangeint25cm > range25cm64PRFnb[chanIdx][i]) i++;
         cmoffseti = i + CM_OFFSET_64M_NB; /* nearest centimeter correction */
       }
     } /* end of switch */
@@ -729,4 +735,47 @@ dw1000_getrangebias(uint8_t channel, uint16_t range, uint8_t prf)
   offset = (int32_t) ((double) CENTIMETER_TO_DWTIME * cmoffseti);
 
   return (offset);
+}
+
+#define RANGE_CORR_MAX_RSSI (-61)
+#define RANGE_CORR_MIN_RSSI (-93)
+
+static int8_t range_bias_by_rssi[RANGE_CORR_MAX_RSSI-RANGE_CORR_MIN_RSSI+1] = {
+    -23, // -61dBm (-11 cm)
+    -23, // -62dBm (-10.75 cm)
+    -22, // -63dBm (-10.5 cm)
+    -22, // -64dBm (-10.25 cm)
+    -21, // -65dBm (-10.0 cm)
+    -21, // -66dBm ( -9.65 cm)
+    -20, // -67dBm (-9.3 cm)
+    -19, // -68dBm (-8.75 cm)
+    -17, // -69dBm (-8.2 cm)
+    -16, // -70dBm (-7.55 cm)
+    -15, // -71dBm (-6.9 cm)
+    -13, // -72dBm (-6.0 cm)
+    -11, // -73dBm (-5.1 cm)
+    -8, // -74dBm (-3.9 cm)
+    -6, // -75dBm (-2.7 cm)
+    -3, // -76dBm (-1.35 cm)
+    0, // -77dBm (0.0 cm)
+    2, // -78dBm (1.05 cm)
+    4, // -79dBm (2.1 cm)
+    6, // -80dBm (2.8 cm)
+    7, // -81dBm (3.5 cm)
+    8, // -82dBm (3.85 cm)
+    9, // -83dBm (4.2 cm)
+    10, // -84dBm (4.55 cm)
+    10, // -85dBm (4.9 cm)
+    12, // -86dBm (5.55 cm)
+    13, // -87dBm (6.2 cm)
+    14, // -88dBm (6.65 cm)
+    15, // -89dBm (7.1 cm)
+    16, // -90dBm (7.35 cm)
+    16, // -91dBm (7.6 cm)
+    17, // -92dBm (7.85 cm)
+    17, // -93dBm (8.1 cm)
+};
+
+int8_t dw_get_rssi_timestamp_bias(int8_t reception_rssi) {
+    return range_bias_by_rssi[-(MAX(MIN(RANGE_CORR_MAX_RSSI, reception_rssi), RANGE_CORR_MIN_RSSI)-RANGE_CORR_MAX_RSSI)];
 }

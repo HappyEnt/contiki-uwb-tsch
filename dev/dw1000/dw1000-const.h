@@ -533,8 +533,8 @@
 
 /* DW_REG_SYS_STATE 0x19 */
 /* DW_SUBREG_TX_STATE   0x00 */
-#define DW_TX_STATE              4 
-#define DW_TX_STATE_MASK         (0x0FULL << 4)  
+#define DW_TX_STATE              4
+#define DW_TX_STATE_MASK         (0x0FULL << 4)
 #define DW_TX_STATE_IDLE         (0x00ULL << 4)    /* \brief dummy */
 #define DW_TX_STATE_PREAMBLE     (0x01ULL << 4)    /* \brief dummy */
 #define DW_TX_STATE_SFD          (0x02ULL << 4)    /* \brief dummy */
@@ -564,13 +564,13 @@
 #define DW_RX_STATE_RECONFIG_110     (0x13ULL << 8)    /* \brief dummy */
 #define DW_RX_STATE_WAIT_110_PHR     (0x14ULL << 8)    /* \brief dummy */
 /* DW_SUBREG_PMSC_STATE 0x02 */
-#define DW_PMSC_STATE              16 
-#define DW_PMSC_STATE_MASK         (0xFFULL << 16) 
+#define DW_PMSC_STATE              16
+#define DW_PMSC_STATE_MASK         (0xFFULL << 16)
 #define DW_PMSC_STATE_INIT         (0x00ULL << 16)    /* \brief DW1000 is in INIT */
 #define DW_PMSC_STATE_IDLE         (0x01ULL << 16)    /* \brief DW1000 is in IDLE */
-#define DW_PMSC_STATE_TX_WAIT      (0x02ULL << 16)    /* \brief DW1000 is waiting to 
+#define DW_PMSC_STATE_TX_WAIT      (0x02ULL << 16)    /* \brief DW1000 is waiting to
                                                           start transmitting */
-#define DW_PMSC_STATE_RX_WAIT      (0x03ULL << 16)    /* \brief DW1000 is waiting to 
+#define DW_PMSC_STATE_RX_WAIT      (0x03ULL << 16)    /* \brief DW1000 is waiting to
                                                           enter receive mode */
 #define DW_PMSC_STATE_TX           (0x04ULL << 16)    /* \brief DW1000 is transmitting */
 #define DW_PMSC_STATE_RX           (0x05ULL << 16)    /* \brief DW1000 is in receive mode */
@@ -578,13 +578,13 @@
 
 /* DW_REG_RX_SNIFF 0x1D */
 #define DW_SNIFF_ONT        0             /* \brief dummy */
-#define DW_SNIFF_ONT_MASK   (0xFUL << 0)  /* \brief dummy */  
+#define DW_SNIFF_ONT_MASK   (0xFUL << 0)  /* \brief dummy */
 #define DW_SNIFF_OFFT       8             /* \brief dummy */
-#define DW_SNIFF_OFFT_MASK  (0xFFUL << 8)  /* \brief dummy */  
+#define DW_SNIFF_OFFT_MASK  (0xFFUL << 8)  /* \brief dummy */
 
 /* DW_REG_CHAN_CTRL 0x1F */
 #define DW_TXCHAN        0              /* \brief dummy */
-#define DW_TXCHAN_MASK   (0xFUL << 0)  /* \brief dummy */  
+#define DW_TXCHAN_MASK   (0xFUL << 0)  /* \brief dummy */
 #define DW_RXCHAN        4              /* \brief dummy */
 #define DW_RXCHAN_MASK   (0xFUL << 4)  /* \brief dummy */
 #define DW_DWSFD         17             /* \brief dummy */
@@ -602,7 +602,7 @@
 
 /* DW_REG_EC_CTRL      0x24 */
 #define DW_PLLLDT        2              /* \brief dummy */
-#define DW_PLLLDT_MASK   (0x1FUL << 2)  /* \brief dummy */ 
+#define DW_PLLLDT_MASK   (0x1FUL << 2)  /* \brief dummy */
 /* DW_REG_GPIO_CTRL 0x26 */
 /* DW_SUBREG_GPIO_MODE 0x26:00*/
 #define DW_MSGP8_MASK (0x3 << 22)   /* \brief dummy */

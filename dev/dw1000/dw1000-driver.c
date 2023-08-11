@@ -226,6 +226,11 @@ have to send directly the message or if it is a delayed transmission */
 static int volatile dw1000_is_delayed_tx = 0;
 
 
+// default values for the antenna delay for the different supported PRF
+static uint16_t dw1000_antenna_delay_prf_64 = 32837u;
+static uint16_t dw1000_antenna_delay_prf_16 = 32837u;
+
+
 /* store the current DW1000 configuration */
 static dw1000_base_conf_t dw1000_conf;
 static dw1000_frame_quality last_packet_quality;
@@ -276,6 +281,7 @@ dw1000_preamble_code_t
 dw1000_get_preamble_code(dw1000_channel_t channel, dw1000_prf_t prf);
 void dw1000_set_tsch_channel(uint8_t channel);
 void dw1000_rx_timeout(uint16_t timeout);
+uint16_t dw1000_get_antenna_delay_for_prf(dw1000_prf_t prf);
 /* end private function */
 
 static int dw1000_driver_prepare(const void *data, unsigned short payload_len);
@@ -508,7 +514,7 @@ static int
 dw1000_driver_transmit(unsigned short payload_len)
 {
 
-    printf("dw1000_driver_transmit\n");
+    PRINTF("dw1000_driver_transmit\n");
 
 #if RADIO_DELAY_MEASUREMENT
   uint64_t transmission_call, transmission_sfd;
@@ -1366,6 +1372,22 @@ dw1000_driver_set_object(radio_param_t param,
 
     return RADIO_RESULT_OK;
   }
+  else if(param == RADIO_LOC_ANTENNA_DELAY_PRF_64) {
+    if(size != sizeof(uint16_t) || !src) {
+      return RADIO_RESULT_INVALID_VALUE;
+    }
+
+    dw1000_antenna_delay_prf_64 = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
+    return RADIO_RESULT_OK;
+  }
+  else if(param == RADIO_LOC_ANTENNA_DELAY_PRF_16) {
+    if(size != sizeof(uint16_t) || !src) {
+      return RADIO_RESULT_INVALID_VALUE;
+    }
+
+    dw1000_antenna_delay_prf_16 = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
+    return RADIO_RESULT_OK;
+  }
   else if(param == RADIO_LOC_RX_ANTENNA_DELAY){
     if(size != 2 || !src) {
       return RADIO_RESULT_INVALID_VALUE;
@@ -1442,6 +1464,17 @@ void dw1000_rx_timeout(uint16_t timeout){
     dw_enable_rx_timeout();
   }
 }
+
+uint16_t dw1000_get_antenna_delay_for_prf(dw1000_prf_t prf)
+{
+    if(prf == DW_PRF_16_MHZ){
+        return dw1000_antenna_delay_prf_16;
+    } else{
+        return dw1000_antenna_delay_prf_64;
+    }
+}
+
+
 /**
  * \brief Enable interrupt for Frame with good CRC reception or Overrun
  */
@@ -1781,9 +1814,10 @@ dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate,
     /* 8 symbols */
     dw1000_conf.sfd_type = DW_SFD_STANDARD;
   }
-    dw1000_conf.sfd_type = DW_SFD_STANDARD;
+  dw1000_conf.sfd_type = DW_SFD_STANDARD;
 
-  dw_set_default_antenna_delay(prf);
+  // default value
+  dw_set_antenna_delay(dw1000_get_antenna_delay_for_prf(dw1000_conf.prf));
 
   dw_conf(&dw1000_conf);
 
@@ -1794,57 +1828,9 @@ dw1000_driver_config(dw1000_channel_t channel, dw1000_data_rate_t data_rate,
  * \Brief Configure the transceiver according a given TSCH channel.
  **/
 void
-dw1000_set_tsch_channel(uint8_t channel){
-  switch(channel){
-    case 0:
-      dw1000_conf.channel = DW_CHANNEL_1;
-      dw1000_conf.prf = DW_PRF_16_MHZ;
-      break;
-    case 1:
-      dw1000_conf.channel = DW_CHANNEL_2;
-      dw1000_conf.prf = DW_PRF_16_MHZ;
-      break;
-    case 2:
-      dw1000_conf.channel = DW_CHANNEL_3;
-      dw1000_conf.prf = DW_PRF_16_MHZ;
-      break;
-    case 3:
-      dw1000_conf.channel = DW_CHANNEL_5;
-      dw1000_conf.prf = DW_PRF_16_MHZ;
-      break;
-    case 4:
-      dw1000_conf.channel = DW_CHANNEL_1;
-      dw1000_conf.prf = DW_PRF_64_MHZ;
-      break;
-    case 5:
-      dw1000_conf.channel = DW_CHANNEL_2;
-      dw1000_conf.prf = DW_PRF_64_MHZ;
-      break;
-    case 6:
-      dw1000_conf.channel = DW_CHANNEL_3;
-      dw1000_conf.prf = DW_PRF_64_MHZ;
-      break;
-    case 7:
-      dw1000_conf.channel = DW_CHANNEL_5;
-      dw1000_conf.prf = DW_PRF_64_MHZ;
-      break;
-    case 8:
-      dw1000_conf.channel = DW_CHANNEL_4;
-      dw1000_conf.prf = DW_PRF_16_MHZ;
-      break;
-    case 9:
-      dw1000_conf.channel = DW_CHANNEL_4;
-      dw1000_conf.prf = DW_PRF_64_MHZ;
-      break;
-    case 10:
-      dw1000_conf.channel = DW_CHANNEL_7;
-      dw1000_conf.prf = DW_PRF_16_MHZ;
-      break;
-    case 11:
-      dw1000_conf.channel = DW_CHANNEL_7;
-      dw1000_conf.prf = DW_PRF_64_MHZ;
-      break;
-  }
+dw1000_set_tsch_channel(uint8_t channel) {
+  dw1000_conf.channel = dw1000_get_tsch_channel_phy_channel(channel);
+  dw1000_conf.prf = dw1000_get_tsch_channel_prf(channel);
   tsch_channel = channel;
   dw1000_conf.preamble_code = dw1000_get_preamble_code(dw1000_conf.channel, dw1000_conf.prf);
   dw_set_prf(dw1000_conf.prf);
@@ -1867,7 +1853,7 @@ dw1000_set_tsch_channel(uint8_t channel){
 
   dw_set_pac_size(dw1000_conf.pac_size, dw1000_conf.prf);
 
-  dw_set_default_antenna_delay(dw1000_conf.prf);
+  dw_set_antenna_delay(dw1000_get_antenna_delay_for_prf(dw1000_conf.prf));
 }
 /**
  * \Brief For a given channel and PRF return a preamble code.
@@ -2002,14 +1988,14 @@ dw1000_schedule_tx_mtm(uint16_t delay_us)
   uint64_t schedule_time = dw_get_device_time();
   /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
   schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
-  
+
   schedule_time = schedule_time + US_TO_RADIO(delay_us);
 
   dw_set_dx_timestamp(schedule_time);
 
   printf("schedule time is: %u\n", (uint32_t)(schedule_time >> 8));
   printf("schedule readback: %u\n", (uint32_t)(dw_get_dx_timestamp() >> 8));
-  
+
   dw1000_is_delayed_tx = 1;
   dw_init_tx(0,1);
 }
@@ -2068,6 +2054,47 @@ dw1000_update_frame_quality(void){
 dw1000_frame_quality
 dw1000_driver_get_packet_quality(void){
   return last_packet_quality;
+}
+
+static uint8_t tsch_channel_to_prf[12] = {
+    DW_PRF_16_MHZ,
+    DW_PRF_16_MHZ,
+    DW_PRF_16_MHZ,
+    DW_PRF_16_MHZ,
+    DW_PRF_64_MHZ,
+    DW_PRF_64_MHZ,
+    DW_PRF_64_MHZ,
+    DW_PRF_64_MHZ,
+    DW_PRF_16_MHZ,
+    DW_PRF_64_MHZ,
+    DW_PRF_16_MHZ,
+    DW_PRF_64_MHZ
+};
+
+static uint8_t tsch_channel_to_phy_channel[12] = {
+    DW_CHANNEL_1,
+    DW_CHANNEL_2,
+    DW_CHANNEL_3,
+    DW_CHANNEL_5,
+    DW_CHANNEL_1,
+    DW_CHANNEL_2,
+    DW_CHANNEL_3,
+    DW_CHANNEL_5,
+    DW_CHANNEL_4,
+    DW_CHANNEL_4,
+    DW_CHANNEL_7,
+    DW_CHANNEL_7
+};
+
+
+uint8_t dw1000_get_tsch_channel_prf(uint8_t tsch_channel)
+{
+    return tsch_channel_to_prf[tsch_channel];
+}
+
+uint8_t dw1000_get_tsch_channel_phy_channel(uint8_t tsch_channel)
+{
+    return tsch_channel_to_phy_channel[tsch_channel];
 }
 
 

@@ -42,6 +42,7 @@
 
 #include "contiki.h"
 #include "dev/radio.h"
+#include "dw1000.h"
 #include "net/netstack.h"
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
@@ -55,14 +56,16 @@
 #include "net/mac/tsch/tsch-prop.h"
 #include "net/mac/tsch/tsch-security.h"
 #include "net/mac/tsch/tsch-adaptive-timesync.h"
+#include "tsch-schedule.h"
 #include "watchdog.h"
 #include "random.h"
 
-
 /* we do not want to keep these file included. */
-// #include "dw1000.h" 
-// #include "dw1000-driver.h" 
-// #include "dw1000-const.h" 
+// #include "dw1000.h"
+// #include "dw1000-driver.h"
+// #include "dw1000-const.h"
+
+#include "decadriver/deca_device_api.h"
 
 #if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64
 #include "lib/simEnvChange.h"
@@ -73,7 +76,7 @@
 // #define DEBUG_GPIO_TSCH 1
 
 /* only enable the TX slot end port, other info comes from dw1000-driver.c */
-// #define DEBUG_SYNC_LOGICAL 1 
+// #define DEBUG_SYNC_LOGICAL 1
 
 // TODO remove all this after development has concluded
 #define TMP_DEBUG_MTM_LOCALISATION 0
@@ -83,7 +86,7 @@
 #define _PRINTF(...)
 #endif
 
-#define PRINTADDR(addr) printf(" %02x%02x:%02x%02x:%02x%02x:%02x%02x ", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7]) 
+#define PRINTADDR(addr) printf(" %02x%02x:%02x%02x:%02x%02x:%02x%02x ", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7])
 #ifdef DEBUG_GPIO_TSCH
   #include "sys/clock.h"
   #include "dev/gpio.h"
@@ -129,7 +132,7 @@
         GPIO_SET_PIN(GPIO_PORT_TO_BASE(DWM1000_PD2_PORT), GPIO_PIN_MASK(DWM1000_PD2_PIN)); \
         clock_delay_usec(1); \
         GPIO_CLR_PIN(GPIO_PORT_TO_BASE(DWM1000_PD2_PORT), GPIO_PIN_MASK(DWM1000_PD2_PIN)); \
-    } while(0)  
+    } while(0)
     #define DWM1000_PD0_PORT           GPIO_D_NUM
     #define DWM1000_PD0_PIN            0
     #define PD0_TRIGGER() do { \
@@ -172,12 +175,12 @@
   #include "dw1000-util.h"
 
 
-#endif /* TSCH_CHORUS */ 
+#endif /* TSCH_CHORUS */
 
+#define UART_WRITE 1
 #ifdef UART_WRITE
-  #include "dev/uart.h"
-  #define DBG_CONF_UART               0
-  #define write_byte(b) uart_write_byte(DBG_CONF_UART, b) 
+  #include "dev/uart0.h"
+  #define write_byte(b) uart0_writeb(b);
 #endif /* UART_WRITE */
 /* END : Just for the debugging of TSCH */
 
@@ -209,6 +212,10 @@
 #define TSCH_DEBUG_SLOT_END()
 #endif
 
+/* #define TSCH_DEBUG_TX_EVENT() printf("TSCH: TX\n") */
+/* #define TSCH_DEBUG_RX_EVENT() printf("TSCH: RX\n") */
+/* #define TSCH_DEBUG_SLOT_END() printf("TSCH: slot end\n") */
+
 /* Check if TSCH_MAX_INCOMING_PACKETS is power of two */
 #if (TSCH_MAX_INCOMING_PACKETS & (TSCH_MAX_INCOMING_PACKETS - 1)) != 0
 #error TSCH_MAX_INCOMING_PACKETS must be power of two
@@ -230,7 +237,7 @@
 #if RTIMER_SECOND < (32 * 1024)
 #error "TSCH: RTIMER_SECOND < (32 * 1024)"
 #endif
-#if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64
+#if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64 || CONTIKI_TARGET_DWM1001
 /* Use 0 usec guard time for Cooja Mote with a 1 MHz Rtimer*/
 #define RTIMER_GUARD 0u
 #elif RTIMER_SECOND >= 200000
@@ -320,7 +327,7 @@ static PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t));
   static PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t));
   #elif TSCH_CHORUS_NODE_TYPE == CHORUS_MOBILE_NODE
   static PT_THREAD(tsch_chorus_mobile_slot(struct pt *pt, struct rtimer *t));
-  #elif TSCH_CHORUS_NODE_TYPE == CHORUS_ANCHORS_NODE  
+  #elif TSCH_CHORUS_NODE_TYPE == CHORUS_ANCHORS_NODE
   static PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t));
   #endif /* TSCH_CHORUS_NODE_TYPE */
 #endif /* TSCH_CHORUS*/
@@ -353,17 +360,17 @@ tsch_get_lock(void)
         write_byte((uint8_t) 'P');
         write_byte((uint8_t) ':');
         write_byte((uint8_t) 'T'); //TSCH
-        write_byte((uint8_t) (9+7)); 
+        write_byte((uint8_t) (9+7));
         for(int i = 0; i < 4 ; i++){
-          write_byte((uint8_t) ((uint8_t*)&busy_wait_time)[i]);    
+          write_byte((uint8_t) ((uint8_t*)&busy_wait_time)[i]);
         }
         write_byte((uint8_t) 6);
         write_byte((uint8_t) 'L');
         write_byte((uint8_t) 'O');
         write_byte((uint8_t) 'C');
-        write_byte((uint8_t) 'K'); 
-        write_byte((uint8_t) 'E'); 
-        write_byte((uint8_t) 'D'); 
+        write_byte((uint8_t) 'K');
+        write_byte((uint8_t) 'E');
+        write_byte((uint8_t) 'D');
         write_byte((uint8_t) '\n');
       #endif /* DEBUG_GPIO_TSCH */
 
@@ -648,7 +655,7 @@ is_active_timeslot(struct tsch_packet *p, struct tsch_neighbor *n,
   return p != NULL ||
        (link->link_options & LINK_OPTION_RX) ||
        (link->link_options & LINK_OPTION_TX && link->link_type == LINK_TYPE_PROP) ||
-       (link->link_options & LINK_OPTION_TX && link->link_type == LINK_TYPE_PROP_MTM) ||      
+       (link->link_options & LINK_OPTION_TX && link->link_type == LINK_TYPE_PROP_MTM) ||
        (link->link_options & LINK_OPTION_TX && link->link_type == LINK_TYPE_CHORUS);
 }
 /*---------------------------------------------------------------------------*/
@@ -728,13 +735,13 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
         }
       }
 #endif /* LLSEC802154_ENABLED */
-      
+
 
       /* prepare packet to send: copy to radio buffer */
       if(packet_ready && NETSTACK_RADIO.prepare(packet, packet_len) == 0) { /* 0 means success */
         static rtimer_clock_t tx_duration;
 
-      
+
 #if CCA_ENABLED
         cca_status = 1;
         /* delay before CCA */
@@ -846,8 +853,8 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
 
               if(ack_len != 0) {
                 if(is_time_source) {
-                  
-                  
+
+
                   int32_t eack_time_correction = US_TO_RTIMERTICKS(ack_ies.ie_time_correction);
                   int32_t since_last_timesync = TSCH_ASN_DIFF(tsch_current_asn, last_sync_asn);
                   if(eack_time_correction > SYNC_IE_BOUND) {
@@ -868,8 +875,8 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
                   /* Keep track of sync time */
                   last_sync_asn = tsch_current_asn;
                   tsch_schedule_keepalive();
-                  
-                  
+
+
                 }
                 mac_tx_status = MAC_TX_OK;
               } else {
@@ -883,8 +890,8 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
           }
         }
 
-        /* printf("Packet send %d, length %d, dest 0X%02X, slot %lu\n", 
-          mac_tx_status, packet_len, 
+        /* printf("Packet send %d, length %d, dest 0X%02X, slot %lu\n",
+          mac_tx_status, packet_len,
           current_neighbor->addr.u8[sizeof(current_neighbor->addr)-1],
           tsch_current_asn.ls4b % TSCH_SCHEDULE_DEFAULT_LENGTH);
 
@@ -940,7 +947,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
 
 #ifdef DEBUG_GPIO_TSCH
   // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
-  
+
 #endif /* DEBUG_GPIO_TSCH */
 
   PT_END(pt);
@@ -1166,7 +1173,7 @@ PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t))
   TSCH_DEBUG_RX_EVENT();
 
 
-  // printf("RX packet from 0X%02X, slot %lu\n", 
+  // printf("RX packet from 0X%02X, slot %lu\n",
   //   source_address.u8[sizeof(source_address)-1],
   //   tsch_current_asn.ls4b % TSCH_SCHEDULE_DEFAULT_LENGTH);
 
@@ -1174,11 +1181,11 @@ PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t))
   #if TSCH_SLEEP
     /* request to place the transceiver in SLEEP mode to reduce energy consumption */
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);
-  #endif /* TSCH_SLEEP */ 
+  #endif /* TSCH_SLEEP */
 
 #ifdef DEBUG_GPIO_TSCH
   // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
-  
+
 #endif /* DEBUG_GPIO_TSCH */
 
   PT_END(pt);
@@ -1198,7 +1205,7 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
   while(tsch_is_associated) {
       #ifdef DEBUG_SYNC_LOGICAL
         PB3_TRIGGER();
-        GPIO_SET_PIN(GPIO_PORT_TO_BASE(DWM1000_PB3_PORT), GPIO_PIN_MASK(DWM1000_PB3_PIN)); 
+        GPIO_SET_PIN(GPIO_PORT_TO_BASE(DWM1000_PB3_PORT), GPIO_PIN_MASK(DWM1000_PB3_PIN));
       #endif /* DEBUG_SYNC_LOGICAL*/
     if(current_link == NULL || tsch_lock_requested) { /* Skip slot operation if there is no link
                                                           or if there is a pending request for getting the lock */
@@ -1228,38 +1235,37 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
       }
       /* Active slot if we have a packet to send or it is a receive slot or a localisation slot */
       is_active_slot = is_active_timeslot(current_packet, current_neighbor, current_link);
-       // printf("current_link type %d\n", current_link->link_type);
       if(is_active_slot) {
         #if TSCH_SLEEP
           /* Wake up the transceiver*/
           TSCH_SCHEDULE_AND_YIELD(&slot_operation_pt, t, current_slot_start-TSCH_SLOT_START_BEFOREHAND, US_TO_RTIMERTICKS(400), "wait");
-          
+
           radio_value_t radio_state = RADIO_RESULT_NOT_SUPPORTED;
-          
+
           if(NETSTACK_RADIO.get_value(RADIO_SLEEP_STATE, &radio_state) == RADIO_RESULT_OK){
                               TSCH_LOG_ADD(tsch_log_message,
                           snprintf(log->message, sizeof(log->message),
                               "radio_state %d %d ",radio_state,RADIO_SLEEP);
-                          );    
+                          );
             if(radio_state == (radio_value_t) RADIO_SLEEP){
               // printf("radio state sleep\n");
               if(NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_REQUEST_WAKEUP) == RADIO_RESULT_OK){
                     TSCH_LOG_ADD(tsch_log_message,
                           snprintf(log->message, sizeof(log->message),
                               "Wake up requested");
-                          );                
+                          );
                     rtimer_now = RTIMER_NOW();
                     TSCH_LOG_ADD(tsch_log_message,
                           snprintf(log->message, sizeof(log->message),
-                              "Wake up ref time %lu, offset %ld, now %lu", 
+                              "Wake up ref time %lu, offset %ld, now %lu",
                               current_slot_start-TSCH_SLOT_START_BEFOREHAND,
                               US_TO_RTIMERTICKS(3000),
                               rtimer_now);
                           );
 
                 TSCH_SCHEDULE_AND_YIELD(&slot_operation_pt, t, current_slot_start- US_TO_RTIMERTICKS(150), 0, "wait");
-                
-                
+
+
                 NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_IDLE);
               }
             }
@@ -1268,7 +1274,6 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
           /* printf("current_slot_start %lu\n", current_slot_start); */
           /* TSCH_SCHEDULE_AND_YIELD(&slot_operation_pt, t, current_slot_start- US_TO_RTIMERTICKS(150), 0, "wait"); */
         #endif /* TSCH_SLEEP */
-
         TSCH_WAIT(&slot_operation_pt, t, current_slot_start, 0, "wait");
         TSCH_DEBUG_SLOT_START();
 
@@ -1305,7 +1310,7 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
           }
           else if(current_link->link_options & LINK_OPTION_RX) {
               static struct pt slot_mtm_rx_mtm_pt;
-              PT_SPAWN(&slot_operation_pt, &slot_mtm_rx_mtm_pt, tsch_mtm_rx_slot(&slot_mtm_rx_mtm_pt, t));              
+              PT_SPAWN(&slot_operation_pt, &slot_mtm_rx_mtm_pt, tsch_mtm_rx_slot(&slot_mtm_rx_mtm_pt, t));
           }
         }
         else
@@ -1329,13 +1334,13 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
               /* mobile node */
               static struct pt slot_rx_chorus_pt;
               PT_SPAWN(&slot_operation_pt, &slot_rx_chorus_pt, tsch_chorus_mobile_slot(&slot_rx_chorus_pt, t));
-            #elif TSCH_CHORUS_NODE_TYPE == CHORUS_ANCHORS_NODE    
+            #elif TSCH_CHORUS_NODE_TYPE == CHORUS_ANCHORS_NODE
               static struct pt slot_rx_chorus_pt;
               PT_SPAWN(&slot_operation_pt, &slot_rx_chorus_pt, tsch_chorus_anchor_slot(&slot_rx_chorus_pt, t));
-            #endif /* TSCH_CHORUS_NODE_TYPE */          
+            #endif /* TSCH_CHORUS_NODE_TYPE */
           }
         }
-        else 
+        else
 #endif /* TSCH_CHORUS */
           if(current_packet != NULL) {
           /* We have something to transmit, do the following:
@@ -1347,9 +1352,9 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
           PT_SPAWN(&slot_operation_pt, &slot_tx_pt, tsch_tx_slot(&slot_tx_pt, t));
         } else {
           /* Listen */
-          static struct pt slot_rx_pt;                  
+          static struct pt slot_rx_pt;
           PT_SPAWN(&slot_operation_pt, &slot_rx_pt, tsch_rx_slot(&slot_rx_pt, t));
-        }     
+        }
       }
       TSCH_DEBUG_SLOT_END();
     }
@@ -1368,7 +1373,7 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
                 "! leaving the network, last sync %u",
                           (unsigned)TSCH_ASN_DIFF(tsch_current_asn, last_sync_asn));
       );
-    
+
     printf("! leaving the network, last sync %u\n",
                           (unsigned)TSCH_ASN_DIFF(tsch_current_asn, last_sync_asn));
 
@@ -1417,7 +1422,7 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
                 rtimer_now = RTIMER_NOW();
                 TSCH_LOG_ADD(tsch_log_message,
                       snprintf(log->message, sizeof(log->message),
-                          "slot time %lu, offset %ld, now %lu", 
+                          "slot time %lu, offset %ld, now %lu",
                           prev_slot_start,
                           time_to_next_active_slot-TSCH_SLOT_START_BEFOREHAND,
                           rtimer_now);
@@ -1426,9 +1431,8 @@ PT_THREAD(tsch_slot_operation(struct rtimer *t, void *ptr))
       } while(!tsch_schedule_slot_operation(t, prev_slot_start-TSCH_SLOT_START_BEFOREHAND, time_to_next_active_slot, "main"));
     }
       #ifdef DEBUG_SYNC_LOGICAL
-        GPIO_CLR_PIN(GPIO_PORT_TO_BASE(DWM1000_PB3_PORT), GPIO_PIN_MASK(DWM1000_PB3_PIN)); 
+        GPIO_CLR_PIN(GPIO_PORT_TO_BASE(DWM1000_PB3_PORT), GPIO_PIN_MASK(DWM1000_PB3_PIN));
       #endif /* DEBUG_SYNC_LOGICAL */
-
     tsch_in_slot_operation = 0;
     PT_YIELD(&slot_operation_pt);
   }
@@ -1442,7 +1446,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
   // printf("tsch_tx_prop_slot\n");
   /**
    * TX loc slot:
-   * Double Sided Two Way Ranging 
+   * Double Sided Two Way Ranging
    * msg1  TX >> RX       step1    TX ok = step 2
    * msg2  TX << RX       step3
    * msg3  TX >> RX       step4    TX ok = step5
@@ -1452,7 +1456,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
    * 2. Sleep until it is time to transmit msg1
    * 3. Transmit the msg1
    * 4. Save the transceiver TX time (msg1)
-   * 5. Schedule a delayed reception (msg2)  
+   * 5. Schedule a delayed reception (msg2)
    * 6. Wait until we received the response (msg2).
    * 7. Read the msg2
    * 8. Save the transceiver RX time (msg2)
@@ -1462,7 +1466,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
    * 12. Save the TX time (msg3)
    * 13. Shedule a delayed reception (msg4)
    * 14. WAIT msg4
-   * 15. Read the received packet (msg4): 
+   * 15. Read the received packet (msg4):
    *     The packet contain informations to compute the ranging.
    * 16. Update Ranging parameters according to TX status
    * 17. Schedule mac_call_sent_callback
@@ -1486,7 +1490,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
   static uint8_t packet_len;
   /* packet seqno */
   static uint8_t seqno;
-  static rtimer_clock_t tx_start_time;  
+  static rtimer_clock_t tx_start_time;
 
   // static uint16_t loc_reply_delay;
 
@@ -1514,7 +1518,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
 
     /* turn tadio off -- will turn on again to wait for ACK if needed */
     tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
-    
+
     /* Save tx timestamp */
     tx_start_time = current_slot_start + tsch_timing[tsch_ts_loc_tx_offset];
     /* calculate TX duration based on sent packet len */
@@ -1536,7 +1540,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
       // rx_timeout_us = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_max_ack]+tsch_timing[tsch_ts_loc_uwb_t_shr])+TSCH_PACKET_DURATION_US(packet_len);
       // NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
 
-      // /* Schedule a delayed reception (msg2)  */ 
+      // /* Schedule a delayed reception (msg2)  */
       // loc_reply_delay = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_loc_rx_reply_time])+TSCH_PACKET_DURATION_US(packet_len);
       // NETSTACK_RADIO.set_object(RADIO_LOC_RX_DELAYED_US, &loc_reply_delay, sizeof(uint16_t));
 
@@ -1556,13 +1560,13 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
       NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &timestamp_tx_m1, sizeof(uint64_t));
 
       /* Wait until we received the response (msg2) */
-      TSCH_WAIT(pt, t, tx_start_time, 
+      TSCH_WAIT(pt, t, tx_start_time,
         tx_duration + tsch_timing[tsch_ts_loc_rx_reply_time] - RADIO_DELAY_BEFORE_RX, "waitRxMsg2");
-      
+
       tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
 
 
-      BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.receiving_packet(),tx_start_time, 
+      BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.receiving_packet(),tx_start_time,
         tx_duration + tsch_timing[tsch_ts_loc_rx_reply_time] + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT);
 
       ack_start_time = RTIMER_NOW() - RADIO_DELAY_BEFORE_DETECT;
@@ -1625,13 +1629,13 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
             tsch_schedule_keepalive();
           }
 
-          /* Schedule a delayed transmission (msg3) */ 
+          /* Schedule a delayed transmission (msg3) */
           // loc_reply_delay = (uint16_t) (RTIMERTICKS_TO_US(tsch_timing[tsch_ts_loc_tx_reply_time])+TSCH_PACKET_DURATION_US(packet_len));
           // NETSTACK_RADIO.set_object(RADIO_LOC_TX_DELAYED_US, &loc_reply_delay, sizeof(uint16_t));
 
 
           tx_duration = TSCH_PACKET_DURATION(packet_len);
-          /* Prepare a response (msg3) */ 
+          /* Prepare a response (msg3) */
           packet_len = tsch_packet_create_ack(packet_buf, TSCH_PACKET_MAX_LEN, seqno);
           NETSTACK_RADIO.prepare(packet_buf, packet_len);
 
@@ -1647,13 +1651,13 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
           if(mac_status == RADIO_TX_OK){
             step = 5;
             // printf("tx msg3\n");
-            /* Save the TX time (msg3)*/ 
+            /* Save the TX time (msg3)*/
             NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &timestamp_tx_m3, sizeof(uint64_t));
 
             /* At the end of the transmission, get an more accurate estimate of SFD sending time */
             NETSTACK_RADIO.get_object(RADIO_PARAM_LAST_TX_PACKET_TIMESTAMP, &tx_start_time, sizeof(rtimer_clock_t));
 
-            /* Shedule a delayed reception (msg4) */ 
+            /* Shedule a delayed reception (msg4) */
             // loc_reply_delay = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_loc_rx_reply_time])+TSCH_PACKET_DURATION_US(packet_len);
             // NETSTACK_RADIO.set_object(RADIO_LOC_RX_DELAYED_US, &loc_reply_delay, sizeof(uint16_t));
 
@@ -1681,33 +1685,33 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
             if(NETSTACK_RADIO.pending_packet()){
               step = 6;
               // printf("TX loc read last message\n");
-              /* Read the received packet (msg4): 
+              /* Read the received packet (msg4):
               *     The packet contain informations to compute the ranging. */
               packet_len = NETSTACK_RADIO.read((void *)packet_buf, sizeof(packet_buf));
               uint32_t replier_reply, replier_roundtrip;
 
-              tsch_packet_parse_ranging_packet(packet_buf, packet_len, seqno, &frame, 
+              tsch_packet_parse_ranging_packet(packet_buf, packet_len, seqno, &frame,
                 &replier_reply, &replier_roundtrip);
               // print_frame(packet_len, packet_buf);
 
 
-              // printf("initiator_roundtrip %lld\n initiator_reply %lld\n replier_roundtrip%lu\n replier_reply%lu\n", 
-              //   timestamp_rx_m2-timestamp_tx_m1, 
+              // printf("initiator_roundtrip %lld\n initiator_reply %lld\n replier_roundtrip%lu\n replier_reply%lu\n",
+              //   timestamp_rx_m2-timestamp_tx_m1,
               //   timestamp_tx_m3-timestamp_rx_m2,
               //   replier_roundtrip, replier_reply);
 
               /* need to compute the distance and then send it to the upper layer */
-              int32_t prop_time = compute_prop_time(timestamp_rx_m2-timestamp_tx_m1, 
+              int32_t prop_time = compute_prop_time(timestamp_rx_m2-timestamp_tx_m1,
                 timestamp_tx_m3-timestamp_rx_m2,
                 replier_roundtrip, replier_reply);
 
-              update_neighbor_prop_time(current_neighbor, prop_time, &tsch_current_asn, current_channel); 
+              update_neighbor_prop_time(current_neighbor, prop_time, &tsch_current_asn, current_channel);
               // printf("update_neighbor_prop_time \n");
               mac_tx_status = MAC_TX_OK;
 
               // printf("TX localisation %ld ASN %u %lu channel %u\n", prop_time, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
             }
-          }    
+          }
         }
       } else {
         mac_tx_status = MAC_TX_NOACK;
@@ -1716,7 +1720,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
       mac_tx_status = MAC_TX_ERR;
     }
     if(mac_tx_status != MAC_TX_OK){
-      printf("TX localisation error at step %u ASN %u %lu channel %u\n", step, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
+      printf("TX localisation error at step %u ASN %u %u channel %u\n", step, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
     }
     tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
 
@@ -1729,26 +1733,30 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
 
   TSCH_DEBUG_TX_EVENT();
   // printf("tsch_tx_prop_slot\n");
-  
+
   #if TSCH_SLEEP
     /* request to place the transceiver in SLEEP mode to reduce energy consumption */
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);
   #endif /* TSCH_SLEEP */
-    
+
   #ifdef DEBUG_GPIO_TSCH
     // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
   #endif /* DEBUG_GPIO_TSCH */
 
   PT_END(pt);
 }
+
+
+
+
 /*---------------------------------------------------------------------------*/
 static
 PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
 {
-  // printf("tsch_rx_prop_slot\n");
-  /**   
+  _PRINTF("tsch_rx_prop_slot\n");
+  /**
    * RX loc slot:
-   * Double Sided Two Way Ranging 
+   * Double Sided Two Way Ranging
    * msg1  TX >> RX => Received      step1
    * msg2  TX << RX => ACK send      step2
    * msg3  TX >> RX => ACK receive   step3
@@ -1761,17 +1769,17 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
    * 5. Save the transceiver RX time (msg1)
    ----
    * 6. Prepare an ACK (msg2)
-   * 7. Schedule a delayed transmition (msg2)  
+   * 7. Schedule a delayed transmition (msg2)
    * 8. Wait the end of the msg2.
    * 9. Save the TX time (msg2)
    ---
-   * 10. Schedule a delayed reception (msg3)  
+   * 10. Schedule a delayed reception (msg3)
    * 11. Wait until we received the response (msg3).
    * 12. Read the msg3
    * 12. Save the transceiver RX time (msg3)
    ----
    * 14. Prepare the  ranging packet (msg4)
-   * 15. Schedule a delayed transmition (msg4)  
+   * 15. Schedule a delayed transmition (msg4)
    * 16. Wait the end of the msg4.
    ---
    * 17. Drift calculated in the ACK callback registered with the radio driver. Use it if receiving from a time source neighbor.
@@ -1815,7 +1823,7 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
     /* Start radio for at least guard time */
     tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
     packet_seen = NETSTACK_RADIO.receiving_packet() || NETSTACK_RADIO.pending_packet();
-    
+
     // uint64_t sys_status_init = dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS);
 
     if(!packet_seen) {
@@ -1831,9 +1839,9 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
     if(!packet_seen) {
       /* no packets on air */
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
-      // printf("no packet seen rx loc slot\n");
-    } 
-    else 
+      printf("no packet seen rx loc slot\n");
+    }
+    else
     {
       step = 1;
       TSCH_DEBUG_RX_EVENT();
@@ -1884,11 +1892,11 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
 
         if(frame_valid) {
           step=2;
-          // printf("rangin step 2\n");
+          /* printf("rangin step 2\n"); */
           if(!(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
              || linkaddr_cmp(&destination_address, &linkaddr_null)))
               printf("error invalid addr rx loc slot 0X%02X%02X  0X%02X%02X\n",
-                destination_address.u8[0],destination_address.u8[1], 
+                destination_address.u8[0],destination_address.u8[1],
                 linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
           if(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
@@ -1913,7 +1921,7 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
             /* Build ACK frame */
             packet_len = tsch_packet_create_eack(packet_buf, sizeof(packet_buf),
                 &source_address, frame.seq, (int16_t)RTIMERTICKS_TO_US(estimated_drift), do_nack);
-           
+
             if(packet_len <= 0)
               printf("error packet len frame rx loc slot\n");
            if(packet_len > 0) {
@@ -1922,10 +1930,10 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
               // rx_timeout_us = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_max_tx]+tsch_timing[tsch_ts_loc_uwb_t_shr]);
               // NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
 
-              /* Schedule a delayed transmission (msg2) */ 
+              /* Schedule a delayed transmission (msg2) */
               /* we give the delay between the reception of the frame and the transmission of the ACK */
               // NETSTACK_RADIO.set_object(RADIO_LOC_TX_DELAYED_US, &loc_reply_delay, sizeof(uint16_t));
-              
+
               /* Copy to radio buffer */
               NETSTACK_RADIO.prepare((const void *)packet_buf, packet_len);
 
@@ -1939,14 +1947,14 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
               // printf("rx loc slot send msg 2\n");
                 // printf("ranging test2 TX mac statut %u, %u, %u, %u, %u\n", mac_tx_status, RADIO_TX_OK, RADIO_TX_ERR, RADIO_TX_COLLISION, RADIO_TX_NOACK);
               if(mac_tx_status == RADIO_TX_OK){
-                // printf("ranging test3\n");
-                /* Save the TX time (msg2)*/ 
+                /* printf("ranging test3\n"); */
+                /* Save the TX time (msg2)*/
                 NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &timestamp_tx_m2, sizeof(uint64_t));
 
                 /* At the end of the transmission, get an more accurate estimate of SFD sending time */
                 NETSTACK_RADIO.get_object(RADIO_PARAM_LAST_TX_PACKET_TIMESTAMP, &rx_start_time, sizeof(rtimer_clock_t));
 
-                /* Shedule a delayed reception (msg3) */ 
+                /* Shedule a delayed reception (msg3) */
                 // loc_reply_delay = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_loc_rx_reply_time])+TSCH_PACKET_DURATION_US(packet_len);
                 // NETSTACK_RADIO.set_object(RADIO_LOC_RX_DELAYED_US, &loc_reply_delay, sizeof(uint16_t));
                 // tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
@@ -1973,7 +1981,7 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
                 tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
 
                 if(NETSTACK_RADIO.pending_packet()){
-                  // printf("ranging tesp 4\n");
+                  /* printf("ranging tesp 4\n"); */
                   packet_len =  NETSTACK_RADIO.read((void *)packet_buf, TSCH_PACKET_MAX_LEN);
                   /* Save the transceiver RX time (msg3) */
                   NETSTACK_RADIO.get_object(RADIO_LOC_LAST_RX_TIMESPTAMP, &timestamp_rx_m3, sizeof(uint64_t));
@@ -1991,16 +1999,16 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
 
                   packet_len = tsch_packet_create_ranging_packet(packet_buf, TSCH_PACKET_MAX_LEN, &destination_address, seqno, t_reply, t_round);
 
-                  /* Schedule a delayed transmission (msg4) */ 
+                  /* Schedule a delayed transmission (msg4) */
                   // NETSTACK_RADIO.set_object(RADIO_LOC_TX_DELAYED_US, &loc_reply_delay, sizeof(uint16_t));
 
                   /* Prepare the  ranging packet (msg4) */
                   NETSTACK_RADIO.prepare((const void *)packet_buf, packet_len);
 
-                  TSCH_WAIT(pt, t, rx_start_time, 
-                    packet_duration + tsch_timing[tsch_ts_loc_tx_reply_time] - RADIO_DELAY_BEFORE_TX, "waitForTxmsg4");
+                  TSCH_WAIT(pt, t, rx_start_time,
+                    packet_duration + tsch_timing[tsch_ts_loc_tx_reply_time] - RADIO_DELAY_BEFORE_TX, "Wait");
 
-                  /* Wait the end of the msg4. */
+                  /* waitForTxmsg4 the end of the msg4. */
                   mac_tx_status = NETSTACK_RADIO.transmit(packet_len);
                   // printf("replier_roundtrip %lu ack_len %d\n replier_reply %lu\n", t_round, ack_len, t_reply);
                   if(mac_tx_status== RADIO_TX_OK){
@@ -2013,7 +2021,7 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
 
             /* If the sender is a time source, proceed to clock drift compensation */
             n = tsch_queue_get_nbr(&source_address);
-            // n=NULL; 
+            // n=NULL;
             if(n != NULL && n->is_time_source) {
               int32_t since_last_timesync = TSCH_ASN_DIFF(tsch_current_asn, last_sync_asn);
               /* Keep track of last sync time */
@@ -2045,7 +2053,7 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
 
   #ifdef DEBUG_GPIO_TSCH
     // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
-    
+
   #endif /* DEBUG_GPIO_TSCH */
 
   // printf("tsch_rx_prop_slot\n");
@@ -2104,7 +2112,7 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
   );
 
   printf("packet len %d\n", packet_len);
-  
+
   current_neighbor = tsch_queue_add_nbr(&(current_link->addr));
 
   /* Copy packet (msg1) to the radio buffer*/
@@ -2117,7 +2125,7 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
 
     TSCH_DEBUG_TX_EVENT();
     /* Transmit the msg1 */
-    write_byte('t');    
+    write_byte('t');
     mac_status = NETSTACK_RADIO.transmit(packet_len);
     write_byte('f');
 
@@ -2125,20 +2133,26 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
     tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
 
     /* Save tx timestamp */
-    tx_start_time = current_slot_start + tsch_timing[tsch_ts_loc_tx_offset];
-    /* calculate TX duration based on sent packet len */
-    tx_duration = TSCH_PACKET_DURATION(packet_len);
-    /* limit tx_time to its max value */
-    tx_duration = MIN(tx_duration, tsch_timing[tsch_ts_max_ack]);
+    /* tx_start_time = current_slot_start + tsch_timing[tsch_ts_loc_tx_offset]; */
+    /* /\* calculate TX duration based on sent packet len *\/ */
+    /* tx_duration = TSCH_PACKET_DURATION(packet_len); */
+    /* /\* limit tx_time to its max value *\/ */
+    /* tx_duration = MIN(tx_duration, tsch_timing[tsch_ts_max_ack]); */
 
     if(mac_status == RADIO_TX_OK) {
-      rtimer_clock_t ack_start_time;
-      int is_time_source;
-      struct ieee802154_ies ack_ies;
-      uint8_t ack_hdrlen;
-      frame802154_t frame;
-
       printf("%llu\n", timestamp_tx);
+
+      // iterate over neighbor table and add tx timestamp to all neighbors
+      /* print_tsch_neighbor_list(); */
+      struct tsch_neighbor *real_n = tsch_queue_get_real_neighbor_list_head();
+
+      // go over all neighbors
+      while(real_n != NULL) {
+          // do sth.
+          real_n = list_item_next(real_n);
+      }
+
+      /* add_mtm_transmission_timestmap() */
     }
   }
 
@@ -2163,6 +2177,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   /* tx status */
   static uint8_t mac_tx_status = MAC_TX_ERR;
   static uint8_t mac_status;
+  static struct tsch_neighbor *neighbor;
 
   PT_BEGIN(pt);
 
@@ -2176,19 +2191,19 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   static rtimer_clock_t rx_start_time;
   static rtimer_clock_t expected_rx_time;
   static rtimer_clock_t packet_duration;
-    
+
   /* timestamp of transmitted messages */
   static uint64_t timestamp_rx;
 
   static uint8_t packet_seen;
 
   expected_rx_time = current_slot_start + tsch_timing[tsch_ts_loc_rx_offset];
-  rx_start_time = expected_rx_time;  
+  rx_start_time = expected_rx_time;
 
   TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen");
 
   write_byte('r');
-  
+
   tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
 
   packet_seen = NETSTACK_RADIO.receiving_packet() || NETSTACK_RADIO.pending_packet();
@@ -2196,49 +2211,44 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   if(!packet_seen) {
       /* Check if receiving within guard time */
       BUSYWAIT_UNTIL_ABS((packet_seen = NETSTACK_RADIO.receiving_packet()),
-          // TODO NEIN NEIN NEIN keine plus 400
-          current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT + 200);
+          current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT);
   }
-  
-  
+
+
   if(!packet_seen) {
       /* no packets on air */
       write_byte('s');
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
       printf("no packet seen mtm rx slot\n");
-
-
-      uint64_t sys_status = dw_read_reg_64(DW_REG_SYS_STATUS,
-                              DW_LEN_SYS_STATUS);
-
-      printf("sys status: %llu\n", sys_status);
-
   } else {
       static frame802154_t frame;
       static int header_len;
       static linkaddr_t source_address;
       static linkaddr_t destination_address;
 
+      BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.pending_packet(),
+          current_slot_start, tsch_timing[tsch_ts_rx_offset] + tsch_timing[tsch_ts_rx_wait] + tsch_timing[tsch_ts_max_tx]);
+
       tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
-      
-      printf("packet seen mtm rx slot\n");
+
       packet_len = NETSTACK_RADIO.read((void *) packet_buf, TSCH_PACKET_MAX_LEN);
       header_len = frame802154_parse((uint8_t *)packet_buf, packet_len, &frame);
 
       frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
-      // print source and destination address
-        printf("source address: ");
-        for(int i = 0; i < 8; i++){
-          printf("%u ", source_address.u8[i]);
-        }
-        printf("\n");
-        printf("destination address: ");
-        for(int i = 0; i < 8; i++){
-          printf("%u ", destination_address.u8[i]);
-        }
-        printf("\n");
+
+      neighbor = tsch_queue_get_nbr(&source_address);
+
+      // get rx_timestamp
+      NETSTACK_RADIO.get_object(RADIO_LOC_LAST_RX_TIMESPTAMP, &timestamp_rx, sizeof(uint64_t));
+      add_mtm_reception_timestamp(neighbor, timestamp_rx);
+
+      _PRINTF("got rx timestamp: %llu\n", timestamp_rx);
+
+      // parse ranging packet
+      tsch_packet_parse_multiranging_packet(packet_buf, packet_len, 0, &frame);
+
+      /* update_mtm_control(n, ); */
   }
-  
 
   /* Copy packet (msg1) to the radio buffer*/
 
@@ -2286,7 +2296,7 @@ void tsch_chorus_output_anchors_cir(linkaddr_t* source_address){
   /* Clear the memory (to check if data is write in the table later) */
   for( uint16_t i =0; i < DW_LEN_ACC_MEM; i++){
     cir[i] = 0;
-  }  
+  }
 
   /* read the ACC memory without using DMA */
   dw_read_CIR(cir);
@@ -2300,7 +2310,7 @@ void tsch_chorus_output_anchors_cir(linkaddr_t* source_address){
   for( uint16_t i =0; i < DW_LEN_ACC_MEM; i++){
     write_byte((uint8_t) cir[i]);
     watchdog_periodic(); /* avoid watchdog timer to be reach */
-  }  
+  }
 
   write_byte((uint8_t) '\n');
 }
@@ -2319,7 +2329,7 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
    * 2. Sleep until it is time to transmit msg1
    * 3. Transmit the msg1
    * 4. Save the transceiver TX time (msg1)
-   * 5. Schedule a delayed reception (msg2)  
+   * 5. Schedule a delayed reception (msg2)
    * 6. Wait until we received the response (msg2).
    * 7. Read the msg2
    * 8. Display the CIR
@@ -2345,7 +2355,7 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
   static uint8_t packet_len;
   /* packet seqno */
   static uint8_t seqno;
-  static rtimer_clock_t tx_start_time;  
+  static rtimer_clock_t tx_start_time;
 
   seqno = 20;
 
@@ -2368,7 +2378,7 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
 
     /* turn tadio off -- will turn on again to wait for ACK if needed */
     tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
-    
+
     /* Save tx timestamp */
     tx_start_time = current_slot_start + tsch_timing[tsch_ts_loc_tx_offset];
     /* calculate TX duration based on sent packet len */
@@ -2382,7 +2392,7 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
       rtimer_clock_t rx_timeout_us = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_max_ack]+tsch_timing[tsch_ts_loc_uwb_t_shr])+TSCH_PACKET_DURATION_US(packet_len);
       NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
 
-      /* Schedule a delayed reception (anchors responses)  */ 
+      /* Schedule a delayed reception (anchors responses)  */
       uint16_t chorus_reply_time = (uint16_t) TSCH_CHORUS_REPLY_TIME - RTIMERTICKS_TO_US( tsch_timing[tsch_ts_loc_uwb_t_shr]);
       NETSTACK_RADIO.set_object(RADIO_LOC_RX_DELAYED_US, &chorus_reply_time, sizeof(uint16_t));
 
@@ -2395,16 +2405,16 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
       #endif /* TSCH_HW_FRAME_FILTERING */
 
       /* Wait until we received the response (msg2) */
-      // TSCH_WAIT(pt, t, tx_start_time, 
+      // TSCH_WAIT(pt, t, tx_start_time,
       //   tx_duration + tsch_timing[tsch_ts_loc_rx_reply_time] - RADIO_DELAY_BEFORE_RX, "waitRxMsg2");
-      
+
       // tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
 
 
       /* Enable CIR memory */
       NETSTACK_RADIO.set_value(RADIO_ACCUMULATOR_MEMORY, RADIO_POWER_MODE_ON);
 
-      BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.receiving_packet(),tx_start_time, 
+      BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.receiving_packet(),tx_start_time,
         tx_duration + US_TO_RTIMERTICKS(TSCH_CHORUS_REPLY_TIME) + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT);
 
       if(NETSTACK_RADIO.receiving_packet() && !NETSTACK_RADIO.pending_packet()){
@@ -2423,7 +2433,7 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
         /* Read packet */
         packet_len = NETSTACK_RADIO.read((void *) packet_buf, sizeof(packet_buf));
 
-    
+
         linkaddr_t source_address;
         frame802154_parse((uint8_t *) packet_buf, packet_len, &frame);
         frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
@@ -2435,7 +2445,7 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
         // PRINTADDR(&source_address);
         // PRINTADDR(&destination_address);
         // printf("\n");
-        
+
         // print_frame(packet_len, (uint8_t *) packet_buf);
 
         // dw_read_reg(DW_REG_RX_BUFFER, sizeof(packet_buf), (uint8_t *)packet_buf);
@@ -2463,12 +2473,12 @@ PT_THREAD(tsch_chorus_initiator_slot(struct pt *pt, struct rtimer *t))
 
   TSCH_DEBUG_TX_EVENT();
   // printf("tsch_tx_prop_slot\n");
-  
+
   #if TSCH_SLEEP
     /* request to place the transceiver in SLEEP mode to reduce energy consumption */
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);
   #endif /* TSCH_SLEEP */
-    
+
   #ifdef DEBUG_GPIO_TSCH
     // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
   #endif /* DEBUG_GPIO_TSCH */
@@ -2483,7 +2493,7 @@ static
 PT_THREAD(tsch_chorus_mobile_slot(struct pt *pt, struct rtimer *t))
 {
   // printf("tsch_rx_prop_slot\n");
-  /**   
+  /**
    * Chorus Mobile RX Slot.
    * Step 1 Receive Initiator request.
    * Step 2 Receive anchors responses and read the CIR
@@ -2494,7 +2504,7 @@ PT_THREAD(tsch_chorus_mobile_slot(struct pt *pt, struct rtimer *t))
    * 4. Read the Initiator Request
    * 5. Correct Clock Drift
    ----
-   * 10. Schedule a delayed reception (Anchors responses)  
+   * 10. Schedule a delayed reception (Anchors responses)
    * 11. Wait until we received the Anchors responses.
    * 12. Read the Anchors responses
    * 12. Show the CIR
@@ -2535,7 +2545,7 @@ struct tsch_neighbor *n;
     /* Start radio for at least guard time */
     tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
     packet_seen = NETSTACK_RADIO.receiving_packet() || NETSTACK_RADIO.pending_packet();
-    
+
     // uint64_t sys_status_init = dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS);
 
     if(!packet_seen) {
@@ -2552,8 +2562,8 @@ struct tsch_neighbor *n;
       /* no packets on air */
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
       // printf("no packet seen rx loc slot\n");
-    } 
-    else 
+    }
+    else
     {
       TSCH_DEBUG_RX_EVENT();
       /* Save packet timestamp */
@@ -2599,7 +2609,7 @@ struct tsch_neighbor *n;
           if(!(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
              || linkaddr_cmp(&destination_address, &linkaddr_null)))
               printf("error invalid addr rx loc slot 0X%02X%02X  0X%02X%02X\n",
-                destination_address.u8[0],destination_address.u8[1], 
+                destination_address.u8[0],destination_address.u8[1],
                 linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
           if(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
@@ -2623,7 +2633,7 @@ struct tsch_neighbor *n;
             rtimer_clock_t rx_timeout_us = (uint16_t) RTIMERTICKS_TO_US(tsch_timing[tsch_ts_max_tx]+tsch_timing[tsch_ts_loc_uwb_t_shr]);
             NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
 
-            /* Schedule a delayed reception (anchors response) */ 
+            /* Schedule a delayed reception (anchors response) */
             /* we give the delay between the reception of the frame and the transmission of the ACK */
             NETSTACK_RADIO.set_object(RADIO_CHORUS_RX_DELAYED_US, &reply_time, sizeof(uint16_t));
 
@@ -2645,12 +2655,12 @@ struct tsch_neighbor *n;
                 // tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
 
             /* Wait until we received the response (msg2) */
-            TSCH_WAIT(pt, t, rx_start_time, 
+            TSCH_WAIT(pt, t, rx_start_time,
               TSCH_PACKET_DURATION(packet_len) +  US_TO_RTIMERTICKS(TSCH_CHORUS_REPLY_TIME) - RADIO_DELAY_BEFORE_RX, "waitRxMsg2");
-            
+
             // tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
 
-            BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.receiving_packet(),rx_start_time, 
+            BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.receiving_packet(),rx_start_time,
               TSCH_PACKET_DURATION(packet_len) + US_TO_RTIMERTICKS(TSCH_CHORUS_REPLY_TIME) + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT);
 
             if(NETSTACK_RADIO.receiving_packet() && !NETSTACK_RADIO.pending_packet()){
@@ -2675,7 +2685,7 @@ struct tsch_neighbor *n;
               frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
 
               /* Read the CIR, output it and disable the CIR memory */
-              tsch_chorus_output_anchors_cir(&source_address);            
+              tsch_chorus_output_anchors_cir(&source_address);
             }
           }
         } /* end frame valid (msg1) */
@@ -2698,7 +2708,7 @@ struct tsch_neighbor *n;
 
   #ifdef DEBUG_GPIO_TSCH
     // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
-    
+
   #endif /* DEBUG_GPIO_TSCH */
 
   // printf("tsch_rx_prop_slot\n");
@@ -2712,7 +2722,7 @@ static
 PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
 {
   // printf("tsch_chorus_anchor_slot\n");
-  /**   
+  /**
    * Chorus Anchors Slot.
    * Step 1 Receive Initiator request.
    * Step 2 Transmit anchors responses
@@ -2723,7 +2733,7 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
    * 4. Read the Initiator Request
    * 5. Correct Clock Drift
    ----
-   * 10. Schedule a delayed transmission (Anchors responses)  
+   * 10. Schedule a delayed transmission (Anchors responses)
    * 11. Wait until we transmit the Anchors responses.
    ---
    * 17. Drift calculated in the ACK callback registered with the radio driver. Use it if receiving from a time source neighbor.
@@ -2759,7 +2769,7 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
     /* Start radio for at least guard time */
     tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
     packet_seen = NETSTACK_RADIO.receiving_packet() || NETSTACK_RADIO.pending_packet();
-    
+
     // uint64_t sys_status_init = dw_read_reg_64(DW_REG_SYS_STATUS, DW_LEN_SYS_STATUS);
 
     if(!packet_seen) {
@@ -2776,8 +2786,8 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
       /* no packets on air */
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
       // printf("no packet seen rx loc slot\n");
-    } 
-    else 
+    }
+    else
     {
       TSCH_DEBUG_RX_EVENT();
       /* Save packet timestamp */
@@ -2823,7 +2833,7 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
           if(!(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
              || linkaddr_cmp(&destination_address, &linkaddr_null)))
               printf("error invalid addr rx loc slot 0X%02X%02X  0X%02X%02X\n",
-                destination_address.u8[0],destination_address.u8[1], 
+                destination_address.u8[0],destination_address.u8[1],
                 linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
           if(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
@@ -2842,11 +2852,11 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
             #endif
 
 
-            /* Schedule a delayed transmission (anchors response) */ 
+            /* Schedule a delayed transmission (anchors response) */
             /* we give the delay between the reception of the frame and the transmission of the ACK */
             uint64_t delay_radio =  US_TO_RADIO(TSCH_CHORUS_REPLY_TIME) + (((NODEID - TSCH_CHORUS_FIRST_ANCHOR_ID)*(TSCH_CHORUS_TX_OFFSET/8)) << DW_TIMESTAMP_CLOCK_OFFSET);
             dw1000_schedule_tx_chorus(delay_radio);
-              
+
             uint8_t do_nack = 0;
             linkaddr_copy(&destination_address, &tsch_broadcast_address);
 
@@ -2860,7 +2870,7 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
               printf("error creation of anchor response\n");
             if(response_len > 0) {
               // printf("prepare to transmit %d\n", loc_reply_delay);
-              
+
               /* Copy to radio buffer */
               NETSTACK_RADIO.prepare((const void *)anchor_resp_buff, response_len);
 
@@ -2877,16 +2887,16 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
               }
               printf("Delay %lld in ns : %lu\n", delay_radio, RADIO_TO_NS(delay_radio));
 
-    
+
         // frame802154_parse((uint8_t *) anchor_resp_buff, response_len, &frame);
         // frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
-    
+
         // printf("Source addr : ");
         // PRINTADDR(&source_address);
         // PRINTADDR(&destination_address);
         // printf("\n");
         // print_frame(response_len, (uint8_t *) anchor_resp_buff);
-        
+
         //   printf("Anchor response after upload to transceiver\n");
         //   static uint8_t read_anchor_resp_buff[TSCH_PACKET_MAX_LEN];
 
@@ -2927,7 +2937,7 @@ PT_THREAD(tsch_chorus_anchor_slot(struct pt *pt, struct rtimer *t))
 
   #ifdef DEBUG_GPIO_TSCH
     // TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_timeslot_length], "Timeslot Lenght");
-    
+
   #endif /* DEBUG_GPIO_TSCH */
 
   // printf("tsch_rx_prop_slot\n");
@@ -2949,6 +2959,8 @@ tsch_slot_operation_start(void)
 
   do {
     uint16_t timeslot_diff;
+
+    _PRINTF("tsch_slot_operation_start\n");
     /* Get next active link */
     current_link = tsch_schedule_get_next_active_link(&tsch_current_asn, &timeslot_diff, &backup_link);
     if(current_link == NULL) {
@@ -2967,7 +2979,7 @@ tsch_slot_operation_start(void)
     _PRINTF("current_slot_start : %lu\n", current_slot_start);
     _PRINTF("time_to_next_active_slot : %lu\n", time_to_next_active_slot);
     _PRINTF("prev_slot_start : %lu\n", prev_slot_start);
-    
+
   } while(!tsch_schedule_slot_operation(&slot_operation_timer, prev_slot_start, time_to_next_active_slot, "association"));
 }
 /*---------------------------------------------------------------------------*/

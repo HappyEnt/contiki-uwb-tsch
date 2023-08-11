@@ -47,6 +47,7 @@
 #include <inttypes.h> /* for print unsigned int */
 #include "dw1000.h"
 #include "dw1000-arch.h"
+#include "cc.h"
 #include <stdlib.h>
 
 #include "assert.h"
@@ -65,7 +66,6 @@
  * \ref dw_get_rx_timestamp or \ref dw_get_tx_timestamp to real seconds.
  */
 #define DW_MS_TO_DEVICE_TIME_SCALE 62.6566416e6f
-
 
 /*===========================================================================*/
 /*========================== Public Declarations ============================*/
@@ -2477,29 +2477,14 @@ dw_is_ranging_frame(void)
 void
 dw_set_antenna_delay(uint16_t antenna_delay)
 {
-  dw_set_tx_antenna_delay((uint16_t) (((uint32_t) (antenna_delay) * 44) / 100));
-  dw_set_rx_antenna_delay((uint16_t) (((uint32_t) (antenna_delay) * 56) / 100));
+  /* dw_set_tx_antenna_delay((uint16_t) (((uint32_t) (antenna_delay) * 44) / 100)); */
+  /* dw_set_rx_antenna_delay((uint16_t) (((uint32_t) (antenna_delay) * 56) / 100)); */
+    dw_set_tx_antenna_delay(antenna_delay);
+    dw_set_rx_antenna_delay(antenna_delay);
   // dw_set_tx_antenna_delay(antenna_delay >> 1);
   // dw_set_rx_antenna_delay(antenna_delay >> 1);
 }
-/**
- * \brief Set a default value for the antenna delay.
- *  These values come from the DecaRanging source code.
- *  File DecaRangingARMbased/Source_UNDER_LICENSE_ONLY/
- *        DecaRangingEVB1000_MP_rev3p05/src/application/instance_calib.c
- *  "(uint16) ((DWT_PRF_64M_RFDLY/ 2.0) * 1e-9 / DWT_TIME_UNITS)"
- */
-void
-dw_set_default_antenna_delay(dw1000_prf_t prf){
-  uint16_t antenna_delay = 0U;
-  if(prf == DW_PRF_16_MHZ){
-    antenna_delay = 32837u;
-  }
-  else{ /* 64 MHz PRF */
-    antenna_delay = 32872u;
-  }
-  dw_set_antenna_delay(antenna_delay);
-}
+
 /**
  * \brief Set the TX antenna delay.
  *    This antenna delay was used to shift the Tx and Rx timestamps
@@ -2602,6 +2587,8 @@ dw_get_clock_offset(void){
   clock_offset |= (clock_full >> (32 - 16)) & 0x8000;
   return clock_offset;
 }
+
+
 /**
  * \brief Setter for the delayed transmit/receive register. If delayed operation
  * is enabled the transmission / reception will not take place until the system
@@ -2619,9 +2606,9 @@ dw_set_dx_timestamp(uint64_t timestamp)
     data[2] = (timestamp >> 16) & 0xFF;
     data[3] = (timestamp >> 24) & 0xFF;
     data[4] = (timestamp >> 32) & 0xFF;
-    
+
   dw_write_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, data);
-      
+
   uint32_t sys_status = 0UL;
   dw_read_subreg(DW_REG_SYS_STATUS, 0x0, 4, (uint8_t*) &sys_status);
   if((sys_status & DW_HPDWARN_MASK) != 0){
@@ -2638,7 +2625,7 @@ dw_get_dx_timestamp()
 {
   uint64_t timestamp = 0ULL;
   timestamp = (dw_read_reg_64(DW_REG_DX_TIME, DW_LEN_DX_TIME)) & 0xFFFFFFFFFFULL;
-  
+
   return timestamp;
 }
 /**
@@ -3117,7 +3104,7 @@ dw_read_reg_64(uint32_t reg_addr, uint16_t reg_len)
   for(int i = 0; i < reg_len; i++) {
       result |= ((uint64_t)read_bytes[i]) << (i * 8);
   }
-  
+
   return result;
 }
 /**

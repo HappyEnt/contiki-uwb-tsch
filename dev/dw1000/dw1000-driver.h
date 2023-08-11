@@ -73,6 +73,10 @@ dw1000_frame_quality dw1000_driver_get_packet_quality(void);
 
 void dw1000_schedule_tx_chorus(uint64_t delay);
 
+uint8_t dw1000_get_tsch_channel_prf(uint8_t tsch_channel);
+uint8_t dw1000_get_tsch_channel_phy_channel(uint8_t tsch_channel);
+
+
 /*---------------------------------------------------------------------------*/
 /** The NETSTACK data structure for the cc2538 RF driver */
 extern const struct radio_driver dw1000_driver;
