@@ -92,24 +92,24 @@ tsch_queue_add_nbr(const linkaddr_t *addr)
   struct tsch_neighbor *n = NULL;
   /* If we have an entry for this neighbor already, we simply update it */
   n = tsch_queue_get_nbr(addr);
-  if(n == NULL) { 
+  if(n == NULL) {
 #ifdef TSCH_DEBUG_QUEUE
     uint32_t value = RTIMER_NOW();
     write_byte((uint8_t) '-');
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+7)); 
+    write_byte((uint8_t) (9+7));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);    
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 6);
     write_byte((uint8_t) 'Q');
     write_byte((uint8_t) 'u');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '2');  
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '2');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_QUEUE */
 
@@ -131,6 +131,26 @@ tsch_queue_add_nbr(const linkaddr_t *addr)
     }
   }
   return n;
+}
+/*---------------------------------------------------------------------------*/
+/* returns list of non-virtual neighbors */
+void* tsch_queue_get_real_neighbor_list_head() {
+    struct tsch_neighbor *n;
+    n = list_head(neighbor_list);
+
+    // skip two entries
+    return (list_t) &(n->next->next->next);
+}
+/*---------------------------------------------------------------------------*/
+/* prints neighbor list */
+void print_tsch_neighbor_list() {
+  if(!tsch_is_locked()) {
+    struct tsch_neighbor *n = list_head(neighbor_list);
+    while(n != NULL) {
+      printf("Neighbor: %d\n", n->addr.u8[LINKADDR_SIZE-1]);
+      n = list_item_next(n);
+    }
+  }
 }
 /*---------------------------------------------------------------------------*/
 /* Get a TSCH neighbor */
@@ -164,6 +184,7 @@ tsch_queue_get_time_source(void)
   }
   return NULL;
 }
+
 /*---------------------------------------------------------------------------*/
 /* Update TSCH time source */
 int
@@ -245,17 +266,17 @@ tsch_queue_remove_nbr(struct tsch_neighbor *n)
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+7)); 
+    write_byte((uint8_t) (9+7));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);    
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 6);
     write_byte((uint8_t) 'Q');
     write_byte((uint8_t) 'u');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '1');  
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '1');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_QUEUE */
 
@@ -410,7 +431,7 @@ tsch_queue_get_packet_for_nbr(const struct tsch_neighbor *n, struct tsch_link *l
 {
   if(!tsch_is_locked()) {
     /* if localisation slot, then no packet to send (packet created by the timeslot) */
-    if(link->link_type == LINK_TYPE_PROP){
+    if(link->link_type == LINK_TYPE_PROP || link->link_type == LINK_TYPE_PROP_MTM){
       return NULL;
     }
     int is_shared_link = link != NULL && link->link_options & LINK_OPTION_SHARED;
@@ -453,7 +474,7 @@ tsch_queue_get_unicast_packet_for_any(struct tsch_neighbor **n, struct tsch_link
 {
   if(!tsch_is_locked()) {
     /* if localisation slot, then no packet to send (packet created by the timeslot) */
-    if(link->link_type == LINK_TYPE_PROP){
+    if(link->link_type == LINK_TYPE_PROP || link->link_type == LINK_TYPE_PROP_MTM){
       return NULL;
     }
     struct tsch_neighbor *curr_nbr = list_head(neighbor_list);

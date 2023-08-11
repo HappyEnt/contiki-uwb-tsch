@@ -1993,9 +1993,6 @@ dw1000_schedule_tx_mtm(uint16_t delay_us)
 
   dw_set_dx_timestamp(schedule_time);
 
-  printf("schedule time is: %u\n", (uint32_t)(schedule_time >> 8));
-  printf("schedule readback: %u\n", (uint32_t)(dw_get_dx_timestamp() >> 8));
-
   dw1000_is_delayed_tx = 1;
   dw_init_tx(0,1);
 }

@@ -103,13 +103,20 @@ int tsch_packet_parse_eb(const uint8_t *buf, int buf_size,
     uint8_t *hdrlen, int frame_without_mic);
 /* Construct ACK packet and return ACK length */
 int tsch_packet_create_ack(uint8_t *buf, int buf_size, uint8_t seqno);
-/* Construct a ranging data packet. This packet contains the real reply time and 
+/* Construct a ranging data packet. This packet contains the real reply time and
   round trip time to compute the propagation time. */
-int tsch_packet_create_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t 
+int tsch_packet_create_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t
             *dest_addr, uint8_t seqno, uint32_t t_reply, uint32_t t_round);
-/* Parse a ranging data packet. This packet contains the real reply time and 
+/* Parse a ranging data packet. This packet contains the real reply time and
   round trip time to compute the propagation time.  */
-int tsch_packet_parse_ranging_packet(const uint8_t *buf, int buf_size, uint8_t seqno, 
+int tsch_packet_parse_ranging_packet(const uint8_t *buf, int buf_size, uint8_t seqno,
   			frame802154_t *frame, uint32_t * t_reply, uint32_t * t_round);
 
+#if TSCH_MTM_LOCALISATION
+/* int tsch_packet_create_mtm_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t */
+/*     *dest_addr, uint8_t seqno, uint32_t t_reply, uint32_t t_round); */
+
+/* int tsch_packet_parse_mtm_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t */
+/*     *dest_addr, uint8_t seqno, uint32_t t_reply, uint32_t t_round); */
+#endif // TSCH_MTM_LOCALISATION
 #endif /* __TSCH_PACKET_H__ */

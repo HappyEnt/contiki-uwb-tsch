@@ -43,6 +43,7 @@
 
 /********** Propagation time Process *********/
 PROCESS_NAME(TSCH_PROP_PROCESS);
+PROCESS_NAME(TSCH_MTM_PROCESS);
 
 /********** Type *********/
 
@@ -51,15 +52,11 @@ PROCESS_NAME(TSCH_PROP_PROCESS);
 // depends on frame length
 #define TSCH_MTM_PROP_MAX_NEIGHBORS 20
 // defines the maximum amount of measurements we will store
-#define TSCH_MTM_PROP_MAX_MEASUREMENT 20
+#define TSCH_MTM_PROP_MAX_MEASUREMENT 5
 
-struct mtm_prop_timestamp {
-    struct mtm_prop_timestamp *next;
-    struct tsch_neighbor *neighbor;    
-    uint64_t rx_timestamp;
-};
-
-void add_mtm_reception_timestamp(struct tsch_neighbor *n, uint64_t rx_timestamp);
+void add_mtm_reception_timestamp(struct tsch_neighbor *from_neighbor, int64_t rx_timestamp_A, int64_t rx_timestamp_B, int64_t tx_timestamp_B);
+void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, int64_t tx_timestamp);
+int64_t mtm_compute_propagation_time(struct tsch_neighbor *n);
 
 /* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
 int tsch_packet_create_multiranging_packet(
@@ -68,6 +65,17 @@ int tsch_packet_create_multiranging_packet(
     const linkaddr_t *dest_addr,
     uint8_t seqno,
     uint64_t tx_timestamp);
+
+int
+tsch_packet_parse_multiranging_packet(
+    uint8_t *buf,
+    int buf_size,
+    uint8_t seqno,
+    frame802154_t *frame,
+    // timestamps
+    int64_t *timestamp_rx_B,
+    int64_t *timestamp_tx_B
+    );
 
 #endif // TSCH_MTM_LOCALISATION
 /********** Functions *********/

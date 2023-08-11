@@ -95,19 +95,19 @@ tsch_schedule_add_slotframe(uint16_t handle, uint16_t size)
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+9)); 
+    write_byte((uint8_t) (9+9));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);    
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 8);
     write_byte((uint8_t) 'S');
     write_byte((uint8_t) 'c');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'd'); 
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'l'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '5');  
+    write_byte((uint8_t) 'd');
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'l');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '5');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_SCHEDULE */
 
@@ -160,19 +160,19 @@ tsch_schedule_remove_slotframe(struct tsch_slotframe *slotframe)
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+9)); 
+    write_byte((uint8_t) (9+9));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);    
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 8);
     write_byte((uint8_t) 'S');
     write_byte((uint8_t) 'c');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'd'); 
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'l'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '1');  
+    write_byte((uint8_t) 'd');
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'l');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '1');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_SCHEDULE */
 
@@ -245,19 +245,19 @@ tsch_schedule_add_link(struct tsch_slotframe *slotframe,
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+9)); 
+    write_byte((uint8_t) (9+9));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);       
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 8);
     write_byte((uint8_t) 'S');
     write_byte((uint8_t) 'c');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'd'); 
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'l'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '2');  
+    write_byte((uint8_t) 'd');
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'l');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '2');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_SCHEDULE */
 
@@ -317,26 +317,26 @@ int
 tsch_schedule_remove_link(struct tsch_slotframe *slotframe, struct tsch_link *l)
 {
   if(slotframe != NULL && l != NULL && l->slotframe_handle == slotframe->handle) {
-    
+
 #ifdef TSCH_DEBUG_SCHEDULE
     uint32_t value = RTIMER_NOW();
     write_byte((uint8_t) '-');
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+9)); 
+    write_byte((uint8_t) (9+9));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);    
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 8);
     write_byte((uint8_t) 'S');
     write_byte((uint8_t) 'c');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'd'); 
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'l'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '3');  
+    write_byte((uint8_t) 'd');
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'l');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '3');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_SCHEDULE */
 
@@ -503,19 +503,19 @@ tsch_schedule_init(void)
     write_byte((uint8_t) 'P');
     write_byte((uint8_t) ':');
     write_byte((uint8_t) 'T'); //TSCH
-    write_byte((uint8_t) (9+9)); 
+    write_byte((uint8_t) (9+9));
     for(int i = 0; i < 4 ; i++){
-      write_byte((uint8_t) ((uint8_t*)&value)[i]);    
+      write_byte((uint8_t) ((uint8_t*)&value)[i]);
     }
     write_byte((uint8_t) 8);
     write_byte((uint8_t) 'S');
     write_byte((uint8_t) 'c');
     write_byte((uint8_t) 'e');
-    write_byte((uint8_t) 'd'); 
-    write_byte((uint8_t) 'u'); 
-    write_byte((uint8_t) 'l'); 
-    write_byte((uint8_t) 'e'); 
-    write_byte((uint8_t) '4');  
+    write_byte((uint8_t) 'd');
+    write_byte((uint8_t) 'u');
+    write_byte((uint8_t) 'l');
+    write_byte((uint8_t) 'e');
+    write_byte((uint8_t) '4');
     write_byte((uint8_t) '\n');
 #endif /* TSCH_DEBUG_SCHEDULE */
 
@@ -587,7 +587,7 @@ rtimer_clock_t tsch_schedule_get_slotframe_duration(void){
     if(sf != NULL)
       return (rtimer_clock_t) sf->size.val * US_TO_RTIMERTICKS(TSCH_DEFAULT_TS_TIMESLOT_LENGTH);
   }
- 
+
  return (rtimer_clock_t) TSCH_SCHEDULE_DEFAULT_LENGTH * US_TO_RTIMERTICKS(TSCH_DEFAULT_TS_TIMESLOT_LENGTH);
 }
 /*---------------------------------------------------------------------------*/

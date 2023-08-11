@@ -424,10 +424,10 @@ tsch_packet_create_ack(uint8_t *buf, int buf_size, uint8_t seqno)
   return 0;
 }
 /*---------------------------------------------------------------------------*/
-/* Construct a ranging data packet. This packet contains the real reply time and 
+/* Construct a ranging data packet. This packet contains the real reply time and
   round trip time to compute the propagation time. */
 int
-tsch_packet_create_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t 
+tsch_packet_create_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t
             *dest_addr, uint8_t seqno, uint32_t t_reply, uint32_t t_round)
 {
   uint8_t curr_len = 0;
@@ -477,10 +477,12 @@ tsch_packet_create_ranging_packet(uint8_t *buf, int buf_size, const linkaddr_t
 
   return curr_len;
 }/*---------------------------------------------------------------------------*/
-/* Parse a ranging data packet. This packet contains the real reply time and 
+
+
+/* Parse a ranging data packet. This packet contains the real reply time and
   round trip time to compute the propagation time.  */
 int
-tsch_packet_parse_ranging_packet(const uint8_t *buf, int buf_size, uint8_t seqno, 
+tsch_packet_parse_ranging_packet(const uint8_t *buf, int buf_size, uint8_t seqno,
     frame802154_t *frame, uint32_t *t_reply, uint32_t *t_round)
 {
   uint8_t curr_len = 0;

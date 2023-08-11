@@ -106,7 +106,7 @@ static const uint16_t tsch_default_timing_us[tsch_ts_elements_count] = {
   TSCH_DEFAULT_TS_RX_TX,
   TSCH_DEFAULT_TS_MAX_ACK,
   TSCH_DEFAULT_TS_MAX_TX,
-  TSCH_DEFAULT_TS_TIMESLOT_LENGTH  
+  TSCH_DEFAULT_TS_TIMESLOT_LENGTH
 #if TSCH_LOCALISATION
   ,TSCH_LOC_RX_WAIT,
   TSCH_LOC_RX_OFFSET,
@@ -464,7 +464,7 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
     return 0;
   }
 #endif /* TSCH_JOIN_SECURED_ONLY */
-  
+
 #if LLSEC802154_ENABLED
   if(!tsch_security_parse_frame(input_eb->payload, hdrlen,
       input_eb->len - hdrlen - tsch_security_mic_len(&frame),
@@ -633,11 +633,11 @@ PT_THREAD(tsch_scan(struct pt *pt))
   /* Check the radio state : if we are in DEEP SLEEP we need to wakup the radio.
     We can be in deep sleep if we have loose a previews synchronisation of TSCH.*/
   radio_value_t radio_state = RADIO_RESULT_NOT_SUPPORTED;
-  if(NETSTACK_RADIO.get_value(RADIO_SLEEP_STATE, &radio_state) == RADIO_RESULT_OK){  
+  if(NETSTACK_RADIO.get_value(RADIO_SLEEP_STATE, &radio_state) == RADIO_RESULT_OK){
     if(radio_state == (radio_value_t) RADIO_SLEEP){
       if(NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_REQUEST_WAKEUP) == RADIO_RESULT_OK){
         /* wait 4 ms to be sure that the transceiver is wake-up */
-        clock_delay_usec(4000);        
+        clock_delay_usec(4000);
         NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_IDLE);
       }
     }
@@ -748,6 +748,8 @@ PROCESS_THREAD(tsch_send_eb_process, ev, data)
 
   PROCESS_BEGIN();
 
+  printf("TSCH: starting EB sender\n");
+
   /* Wait until association */
   etimer_set(&eb_timer, CLOCK_SECOND / 10);
   while(!tsch_is_associated) {
@@ -805,6 +807,7 @@ PROCESS_THREAD(tsch_send_eb_process, ev, data)
     } else {
       delay = TSCH_EB_PERIOD;
     }
+    /* printf("delay %lu\n", delay); */
     etimer_set(&eb_timer, delay);
     PROCESS_WAIT_UNTIL(etimer_expired(&eb_timer));
   }
@@ -1023,6 +1026,7 @@ packet_input(void)
 static int
 turn_on(void)
 {
+    printf("turn_on\n");
   if(tsch_is_initialized == 1 && tsch_is_started == 0) {
     tsch_is_started = 1;
     /* Process tx/rx callback and log messages whenever polled */

@@ -39,6 +39,7 @@
 
 
 #include "contiki.h"
+#include "linkaddr.h"
 #include "net/mac/tsch/tsch-asn.h"
 #include "net/mac/tsch/tsch-packet.h"
 #include "net/mac/tsch/tsch-prop.h"
@@ -47,24 +48,183 @@
 #include "dev/radio.h"
 #include "memb.h"
 
+
+#include "nrfx_log.h"
+
 #include <stdio.h>
 #include <string.h>
 
+#include "dw1000-driver.h"
+#include "dw1000-ranging-bias.h"
 
 #if TSCH_MTM_LOCALISATION
-LIST(measurement_list);
-MEMB(mtm_prop_timestamp_memb, struct mtm_prop_timestamp, TSCH_MTM_PROP_MAX_MEASUREMENT);
 
-void add_mtm_reception_timestamp(struct tsch_neighbor *n, uint64_t rx_timestamp) {
-    struct mtm_prop_timestamp *t = NULL;
 
-    t = memb_alloc(&mtm_prop_timestamp_memb);
+struct ds_twr_ts
+{
+    int64_t txA1, rxB1, txB1, rxA1, txA2, rxB2;
+};
+
+struct mtm_neighbor {
+    struct mtm_neighbor *next;
+    struct tsch_neighbor *neighbor;
+
+    struct ds_twr_ts ts;
+};
+
+// in the following we use the value -1 for uninitialized timestamps
+struct mtm_rx_queue_item {
+    struct mtm_rx_queue_item *next;
+    struct tsch_neighbor *neighbor;
+    int64_t rx_timestamp;
+};
+
+struct mtm_timestamp_assoc {
+    struct mtm_timestamp_assoc *next;
+    struct tsch_asn_t asn;
+    int64_t timestamp;
+};
+
+LIST(ranging_neighbor_list);
+LIST(rx_send_queue);
+
+MEMB(mtm_prop_neighbor_memb, struct mtm_neighbor, TSCH_MTM_PROP_MAX_MEASUREMENT);
+MEMB(mtm_prop_rx_memb, struct mtm_rx_queue_item, TSCH_MTM_PROP_MAX_NEIGHBORS);
+
+#define SPEED_OF_LIGHT_M_PER_S 299702547.236
+#define SPEED_OF_LIGHT_M_PER_UWB_TU ((SPEED_OF_LIGHT_M_PER_S * 1.0E-15) * 15650.0) // around 0.00469175196
+
+void add_mtm_reception_timestamp(struct tsch_neighbor *from_neighbor, int64_t rx_timestamp_A, int64_t rx_timestamp_B, int64_t tx_timestamp_B) {
+    struct mtm_rx_queue_item *t = NULL;
+
+    // first update our own outgoing rx queue
+
+    if (list_length (rx_send_queue) >= TSCH_MTM_PROP_MAX_NEIGHBORS) {
+        printf("MTM: RX queue full, dropping received timestamp\n");
+        return;
+    }
+
+    t = memb_alloc(&mtm_prop_rx_memb);
 
     if (t != NULL) {
-        list_add(measurement_list, t);
+        t->rx_timestamp = rx_timestamp_A;
+        t->neighbor = from_neighbor;
+        list_add(rx_send_queue, t);
+    } else {
+        printf("MTM: Could not allocate memory for reception timestamp\n");
+        return;
     }
+
+    // next update our neighbor table
+    struct mtm_neighbor *n = NULL;
+    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+        if (n->neighbor == from_neighbor) {
+            break;
+        }
+    }
+
+    // if no neighbor just break
+    if (n == NULL) {
+        printf("MTM: No neighbor found for reception timestamp\n");
+        return;
+    }
+
+    // txA1, rxB1 and txA2 are filled by the transmission timestamp method, we will now just set the rest of the entries
+    n->ts.rxB2 = rx_timestamp_B;
+    n->ts.txB1 = tx_timestamp_B;
+    n->ts.rxA1 = rx_timestamp_A;
 }
 
+void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, int64_t tx_timestamp) {
+
+    printf("Adding transmission timestamp: %d\n", (int32_t) tx_timestamp);
+
+    // this is only temporarly, we will later keep our own neighbor table
+      struct tsch_neighbor *real_n = tsch_queue_get_real_neighbor_list_head();
+
+      // Update mtm_neighbor list after our own transmission event
+      while(real_n != NULL) {
+          // check if neighbor has already a entry in our list
+          struct mtm_neighbor *n = NULL;
+          for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+              if (n->neighbor == real_n) {
+                  break;
+              }
+          }
+
+          if (n == NULL) {
+              // neighbor not found, add it
+              n = memb_alloc(&mtm_prop_neighbor_memb);
+              if (n != NULL) {
+                  n->neighbor = real_n;
+                  n->ts.txA1 = tx_timestamp;
+                  n->ts.rxB1 = -1;
+                  n->ts.txB1 = -1;
+                  n->ts.rxA1 = -1;
+                  n->ts.txA2 = -1;
+                  n->ts.rxB2 = -1;
+                  list_add(ranging_neighbor_list, n);
+              } else {
+                  printf("MTM: Could not allocate memory for neighbor\n");
+                  return;
+              }
+          } else { // update existing entry
+              // shift all
+              n->ts.txA1 = n->ts.txA2;
+              n->ts.rxB1 = n->ts.rxB2;
+              // null remaining
+              n->ts.txB1 = -1;
+              n->ts.rxA1 = -1;
+              n->ts.txA2 = tx_timestamp;
+              n->ts.rxB2 = -1;
+          }
+
+          real_n = list_item_next(real_n);
+      }
+}
+
+void print_ds_twr_timestamps(struct ds_twr_ts *ts) {
+    printf("txA1: %d, rxB1: %d, txB1: %d, rxA1: %d, txA2: %d, rxB2: %d\n", (int32_t) ts->txA1, (int32_t) ts->rxB1, (int32_t) ts->txB1, (int32_t) ts->rxA1, (int32_t) ts->txA2, (int32_t) ts->rxB2);
+}
+
+// computes propagation time from internal state kept for the passed tsch_neighbor
+int64_t mtm_compute_propagation_time(struct tsch_neighbor *n) {
+    // first check whether neighbor has a valid entry in our list and none of the timestamps are uninitialized, i.e., of value -1
+    struct mtm_neighbor *mtm_n = NULL;
+    for(mtm_n = list_head(ranging_neighbor_list); mtm_n != NULL; mtm_n = list_item_next(mtm_n)) {
+        if (mtm_n->neighbor == n) {
+            break;
+        }
+    }
+
+    if (mtm_n == NULL) {
+        printf("MTM: Neighbor not found in list\n");
+        return -1;
+    }
+
+    if (mtm_n->ts.txA1 == -1 || mtm_n->ts.rxB1 == -1 || mtm_n->ts.txB1 == -1 || mtm_n->ts.rxA1 == -1 || mtm_n->ts.txA2 == -1 || mtm_n->ts.rxB2 == -1) {
+        printf("MTM: Neighbor has uninitialized timestamps\n");
+        print_ds_twr_timestamps(&mtm_n->ts);
+        return -1;
+    }
+
+    int32_t initiator_roundtrip, initiator_reply, replier_roundtrip, replier_reply;
+
+    // next calculate trip times
+    initiator_roundtrip = mtm_n->ts.rxA1 - mtm_n->ts.txA1;
+    initiator_reply = mtm_n->ts.txA2 - mtm_n->ts.rxA1;
+    replier_roundtrip = mtm_n->ts.rxB2 - mtm_n->ts.txB1;
+    replier_reply = mtm_n->ts.txB1 - mtm_n->ts.rxB1;
+
+    int64_t prop_time  = compute_prop_time(initiator_roundtrip, initiator_reply, replier_roundtrip, replier_reply);
+
+    float range = prop_time * SPEED_OF_LIGHT_M_PER_UWB_TU;
+    // bias correction in centimeters
+    /* bias_correction = dw1000_getrangebias(n->last_prop_time.tsch_channel, range); */
+    printf("bias uncorrected range to %u: " NRF_LOG_FLOAT_MARKER "\n", n->addr.u8[LINKADDR_SIZE-1], NRF_LOG_FLOAT(range));
+
+    // compute roundtrip times from
+}
 
 // We put functionality regarding package creation here for now. This allows the measurement_list to
 // remain inside this functional unit and not leak out.
@@ -119,21 +279,126 @@ int tsch_packet_create_multiranging_packet(
   curr_len = curr_len + sizeof(uint64_t);
 
   // iterate over list of measurements and add each timestamp to the packet
-  /* struct mtm_prop_timestamp *t = NULL; */
-  
-  /* for(t = list_head(measurement_list); t != NULL; t = list_item_next(t)) { */
-  /*     memcpy(&buf[curr_len], &t->rx_timestamp, sizeof(uint64_t)); */
-  /*     curr_len = curr_len + sizeof(uint64_t); */
-  /* } */
+  struct mtm_rx_queue_item *t = NULL;
 
-  /* // free all allocated memory for all measurements again */
-  /* for(t = list_head(measurement_list); t != NULL; t = list_item_next(t)) { */
-  /*     list_remove(measurement_list, t); */
-  /*     memb_free(&mtm_prop_timestamp_memb, t); */
-  /* } */
-  
+  // write amount of measurements
+  uint8_t amount_of_measurements = list_length(rx_send_queue);
+
+  memcpy(&buf[curr_len], &amount_of_measurements, sizeof(uint8_t));
+  curr_len = curr_len + sizeof(uint8_t);
+
+  for(t = list_head(rx_send_queue); t != NULL; t = list_item_next(t)) {
+      memcpy(&buf[curr_len], &t->neighbor->addr.u8[LINKADDR_SIZE-1], sizeof(uint8_t));
+      curr_len = curr_len + sizeof(uint8_t);
+      memcpy(&buf[curr_len], &t->rx_timestamp, sizeof(uint64_t));
+      curr_len = curr_len + sizeof(uint64_t);
+  }
+
+  // free all allocated memory for all measurements again
+  while((t = list_pop(rx_send_queue)) != NULL) {
+      memb_free(&mtm_prop_rx_memb, t);
+  }
+
   return curr_len;
 }
+
+int
+tsch_packet_parse_multiranging_packet(
+    uint8_t *buf,
+    int buf_size,
+    uint8_t seqno,
+    frame802154_t *frame,
+    // timestamps
+    int64_t *timestamp_rx_B,
+    int64_t *timestamp_tx_B
+     )
+{
+  uint8_t curr_len = 0;
+  int ret;
+  linkaddr_t dest;
+
+
+  if(frame == NULL || buf_size < 0) {
+    return 0;
+  }
+
+  /* Parse 802.15.4-2006 frame, i.e. all fields before Information Elements */
+  if((ret = frame802154_parse((uint8_t *)buf, buf_size, frame)) < 3) {
+    return 0;
+  }
+
+  curr_len += ret;
+
+  // printf("frame payload len %d\n", frame->payload_len);
+  /* Check seqno */
+  /* if(seqno != frame->seq) { */
+  /*   return 0; */
+  /* } */
+
+  /* Check destination PAN ID */
+  if(frame802154_check_dest_panid(frame) == 0) {
+    return 0;
+  }
+
+  /* Check destination address (if any) */
+  if(frame802154_extract_linkaddr(frame, NULL, &dest) == 0 ||
+     (!linkaddr_cmp(&dest, &linkaddr_node_addr)
+      && !linkaddr_cmp(&dest, &linkaddr_null))) {
+    return 0;
+  }
+
+  // if everything is okay we will extract the timestamps
+
+  // extract timestamps
+  uint64_t tx_timestamp;
+  // extract rx timestamp amount
+  uint8_t amount_of_measurements;
+  memcpy(&tx_timestamp, &buf[curr_len], sizeof(uint64_t));
+  curr_len = curr_len + sizeof(uint64_t);
+  memcpy(&amount_of_measurements, &buf[curr_len], sizeof(uint8_t));
+  curr_len = curr_len + sizeof(uint8_t);
+  struct { uint8_t neighbor; uint64_t rx_timestamp; } timestamps[amount_of_measurements];
+
+  for(int i = 0; i < amount_of_measurements; i++) {
+      memcpy(&timestamps[i].neighbor, &buf[curr_len], sizeof(uint8_t));
+      curr_len = curr_len + sizeof(uint8_t);
+      memcpy(&timestamps[i].rx_timestamp, &buf[curr_len], sizeof(uint64_t));
+      curr_len = curr_len + sizeof(uint64_t);
+
+      // check if the timestamps is for us
+      if (timestamps[i].neighbor == linkaddr_node_addr.u8[LINKADDR_SIZE-1]) {
+          *timestamp_rx_B = timestamps[i].rx_timestamp;
+      }
+  }
+
+  // set tx timestamp
+  *timestamp_tx_B = tx_timestamp;
+
+  return curr_len;
+}
+
+PROCESS(TSCH_MTM_PROCESS, "TSCH propagation time process");
+  /*---------------------------------------------------------------------------*/
+  /* Protothread for slot operation, called by update_neighbor_prop_time()
+   * function. "data" is a struct tsch_neighbor pointer.*/
+  PROCESS_THREAD(TSCH_MTM_PROCESS, ev, data)
+  {
+    PROCESS_BEGIN();
+
+    while(1) {
+      PROCESS_WAIT_EVENT();
+      if(ev == PROCESS_EVENT_MSG) {
+        printf("New prop time %ld %u %lu %u\n",
+          ((struct tsch_neighbor *) data)->last_prop_time.prop_time,
+          ((struct tsch_neighbor *) data)->last_prop_time.asn.ms1b, /* most significant 1 byte */
+          ((struct tsch_neighbor *) data)->last_prop_time.asn.ls4b, /* least significant 4 bytes */
+          ((struct tsch_neighbor *) data)->last_prop_time.tsch_channel);
+      }
+    }
+
+    PROCESS_END();
+  }
+
 #endif
 
 #ifndef TSCH_LOC_THREAD
@@ -150,59 +415,74 @@ int tsch_packet_create_multiranging_packet(
 
     printf("tsch_loc_operation start\n");
 
+    static int32_t bias_correction; // in centimeters?
+    static float range;
+    static struct tsch_neighbor *n;
+
     while(1) {
       PROCESS_WAIT_EVENT();
       // printf("Got event number %d\n", ev);
-      if(ev == PROCESS_EVENT_MSG){
-        printf("New prop time %ld %u %lu %u\n", 
-          ((struct tsch_neighbor *) data)->last_prop_time.prop_time, 
-          ((struct tsch_neighbor *) data)->last_prop_time.asn.ms1b, /* most significant 1 byte */
-          ((struct tsch_neighbor *) data)->last_prop_time.asn.ls4b, /* least significant 4 bytes */
-          ((struct tsch_neighbor *) data)->last_prop_time.tsch_channel);
+      if(ev == PROCESS_EVENT_MSG) {
+          n = (struct tsch_neighbor *) data;
+
+          range = n->last_prop_time.prop_time * SPEED_OF_LIGHT_M_PER_UWB_TU;
+          // bias correction in centimeters
+          bias_correction = dw1000_getrangebias(n->last_prop_time.tsch_channel, range);
+          printf("bias corrected range: " NRF_LOG_FLOAT_MARKER "\n", NRF_LOG_FLOAT( range - (float) bias_correction * 0.01));
+
+          printf("New prop time %ld %u %lu %u \r\n",
+              n->last_prop_time.prop_time,
+              n->last_prop_time.asn.ms1b, /* most significant 1 byte */
+              n->last_prop_time.asn.ls4b, /* least significant 4 bytes */
+              n->last_prop_time.tsch_channel);
       }
     }
 
     PROCESS_END();
   }
 #endif /* TSCH_LOC_THREAD */
+
 /*---------------------------------------------------------------------------*/
 /* Update the propagation time between the node and his neighbor */
 void
-update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time, 
+update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time,
                           struct tsch_asn_t * asn, uint8_t tsch_channel)
 {
   struct tsch_prop_time n_prop_time;
+
+
   n_prop_time.prop_time = prop_time;
-  n_prop_time.asn = * asn; /* Copy the 5 bytes pointed by the pointer * asn 
+  n_prop_time.asn = * asn; /* Copy the 5 bytes pointed by the pointer * asn
   to the n_prop_time.asn struct */
   n_prop_time.tsch_channel = tsch_channel;
   n->last_prop_time = n_prop_time;
 
-  /* printf("TSCH-prop %ld %lu\n", 
-          prop_time, 
+  /* printf("TSCH-prop %ld %lu\n",
+          prop_time,
           n_prop_time.asn.ls4b); */
 
-  /* Send the PROCESS_EVENT_MSG event asynchronously to 
+  /* Send the PROCESS_EVENT_MSG event asynchronously to
   "tsch_loc_operation", with a pointer to the tsch_neighbor. */
   process_post(&TSCH_PROP_PROCESS,
                 PROCESS_EVENT_MSG, (void *) n);
 }
 
+
 /*---------------------------------------------------------------------------*/
-/** 
+/**
  * Compute the propagation time using the Asymmetrical approach of Decawave
- * We use signed number to give the possibilities to have negative 
- * propagation time in the case that the antenna delay was to hight 
+ * We use signed number to give the possibilities to have negative
+ * propagation time in the case that the antenna delay was to hight
  * when we calibrate the nodes.
  *
  **/
 int32_t
 compute_prop_time(int32_t initiator_roundtrip, int32_t initiator_reply,
   int32_t replier_roundtrip, int32_t replier_reply) {
-  return (int32_t)(( ((int64_t) initiator_roundtrip * replier_roundtrip) 
+  return (int32_t)(( ((int64_t) initiator_roundtrip * replier_roundtrip)
                   - ((int64_t) initiator_reply * replier_reply) )
-                /  ((int64_t) initiator_roundtrip 
-                  +  replier_roundtrip 
-                  +  initiator_reply 
+                /  ((int64_t) initiator_roundtrip
+                  +  replier_roundtrip
+                  +  initiator_reply
                   +  replier_reply));
 }

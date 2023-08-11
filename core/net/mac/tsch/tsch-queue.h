@@ -120,6 +120,7 @@ struct tsch_prop_time
   struct tsch_asn_t asn;  /* ASN of the slot used for the propagation time measurement */
   uint8_t tsch_channel;
 };
+
 /* TSCH packet information */
 struct tsch_packet {
   struct queuebuf *qb;  /* pointer to the queuebuf to be sent */
@@ -183,6 +184,10 @@ void tsch_queue_reset(void);
 void tsch_queue_free_unused_neighbors(void);
 /* Is the neighbor queue empty? */
 int tsch_queue_is_empty(const struct tsch_neighbor *n);
+/* Print neighbor list */
+void print_tsch_neighbor_list();
+/* returns list of non-virtual neighbors */
+void* tsch_queue_get_real_neighbor_list_head();
 /* Returns the first packet from a neighbor queue */
 struct tsch_packet *tsch_queue_get_packet_for_nbr(const struct tsch_neighbor *n, struct tsch_link *link);
 /* Returns the head packet from a neighbor queue (from neighbor address) */
