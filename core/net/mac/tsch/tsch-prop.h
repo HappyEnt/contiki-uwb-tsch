@@ -60,6 +60,12 @@ void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestam
 // between measurements increases. This would allow us to give a measurement of how outdated or bad
 // the measurement is.
 
+struct distance_measurement {
+    linkaddr_t *addr;
+    float range;
+    int32_t tof;
+};
+
 
 /* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
 int tsch_packet_create_multiranging_packet(

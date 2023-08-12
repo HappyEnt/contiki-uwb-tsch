@@ -35,6 +35,9 @@
 #ifndef __PROJECT_CONF_H__
 #define __PROJECT_CONF_H__
 
+/* don't use default localization thread, instead use our custom behaviour */
+#define TSCH_LOC_THREAD 1
+
 /* Set to run orchestra */
 #ifndef WITH_ORCHESTRA
 #define WITH_ORCHESTRA 0
@@ -51,6 +54,7 @@
 
 #undef UIP_CONF_MAX_ROUTES
 #define UIP_CONF_MAX_ROUTES 0 /* No need for routes */
+/* #define UIP_CONF_MAX_ROUTES 5 /\* only needed in rpl storing mode *\/ */
 #undef RPL_CONF_MOP
 #define RPL_CONF_MOP RPL_MOP_NON_STORING /* Mode of operation*/
 #undef ORCHESTRA_CONF_RULES
@@ -158,6 +162,10 @@
 #define NETSTACK_CONF_ROUTING_NEIGHBOR_ADDED_CALLBACK schedule_callback_routing_child_added
 #define NETSTACK_CONF_ROUTING_NEIGHBOR_REMOVED_CALLBACK schedule_callback_routing_child_removed
 #endif
+
+// we need really short timeslot lengths
+/* #undef TSCH_CONF_DEFAULT_TIMESLOT_LENGTH */
+/* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH 2000 */
 
 /* #define TSCH_CONF_HW_FRAME_FILTERING    0 */
 /* #define TSCH_SCHEDULE_CONF_WITH_6TISCH_MINIMAL 1 */

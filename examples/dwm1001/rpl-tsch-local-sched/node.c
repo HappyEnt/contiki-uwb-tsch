@@ -44,6 +44,7 @@
 #include "nbr-table.h"
 #include "net/mac/tsch/tsch.h"
 #include "net/rpl/rpl-private.h"
+#include "tsch-prop.h"
 #include <stdio.h>
 #if WITH_ORCHESTRA
 #include "orchestra.h"
@@ -69,7 +70,7 @@
 
 /*---------------------------------------------------------------------------*/
 PROCESS(node_process, "RPL Node");
-/* PROCESS(TSCH_PROP_PROCESS, "TSCH localization User Process"); */
+PROCESS(TSCH_PROP_PROCESS, "TSCH localization User Process");
 
 
 #if CONFIG_VIA_BUTTON
@@ -205,30 +206,32 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
     }
 }
 
-/* PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data) */
-/* { */
-/*   PROCESS_BEGIN(); */
+PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
+{
+  PROCESS_BEGIN();
 
-/*   printf("custom tsch_loc_operation handler start\n"); */
+  printf("custom tsch_loc_operation handler start\n");
 
-/*   static struct tsch_neighbor *n = NULL; */
+  static struct distance_measurement *n = NULL;
 
-/*   while(1) { */
-/*     PROCESS_YIELD(); */
-/*     /\* receive a new propagation time measurement *\/ */
-/*     if(ev == PROCESS_EVENT_MSG){ */
-/*         n = (struct tsch_neighbor *) data; */
+  while(1) {
+    PROCESS_YIELD();
+    /* receive a new propagation time measurement */
+    if(ev == PROCESS_EVENT_MSG){
+        n = (struct distance_measurement *) data;
 
-/*         float range = n->last_prop_time.prop_time * SPEED_OF_LIGHT_M_PER_UWB_TU; */
-/*         uint8_t addr_short = n->addr.u8[LINKADDR_SIZE-1]; */
+        printf("sending range to host, tof is: %u \n", n->tof);
 
-/*         /\* output_range_via_serial(range); *\/ */
-/*         output_range_via_serial_snprintf(addr_short, range); */
-/*     } */
-/*   } */
+        float range = n->tof * SPEED_OF_LIGHT_M_PER_UWB_TU;
+        uint8_t addr_short = n->addr->u8[LINKADDR_SIZE-1];
 
-/*   PROCESS_END(); */
-/* } */
+        /* output_range_via_serial(range); */
+        output_range_via_serial_snprintf(addr_short, range);
+    }
+  }
+
+  PROCESS_END();
+}
 
 
 /*---------------------------------------------------------------------------*/
