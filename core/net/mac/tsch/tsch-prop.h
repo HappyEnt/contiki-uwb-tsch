@@ -54,9 +54,12 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 // defines the maximum amount of measurements we will store
 #define TSCH_MTM_PROP_MAX_MEASUREMENT 5
 
-void add_mtm_reception_timestamp(struct tsch_neighbor *from_neighbor, int64_t rx_timestamp_A, int64_t rx_timestamp_B, int64_t tx_timestamp_B);
-void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, int64_t tx_timestamp);
-int64_t mtm_compute_propagation_time(struct tsch_neighbor *n);
+void add_mtm_reception_timestamp(linkaddr_t *neighbor_addr, struct tsch_asn_t *asn, uint64_t rx_timestamp_A, uint64_t rx_timestamp_B, uint64_t tx_timestamp_B);
+void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
+// requires passing of the asn. Currently not used, but could in future be used when the duration
+// between measurements increases. This would allow us to give a measurement of how outdated or bad
+// the measurement is.
+
 
 /* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
 int tsch_packet_create_multiranging_packet(
@@ -73,8 +76,8 @@ tsch_packet_parse_multiranging_packet(
     uint8_t seqno,
     frame802154_t *frame,
     // timestamps
-    int64_t *timestamp_rx_B,
-    int64_t *timestamp_tx_B
+    uint64_t *timestamp_rx_B,
+    uint64_t *timestamp_tx_B
     );
 
 #endif // TSCH_MTM_LOCALISATION
@@ -89,5 +92,8 @@ void update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time, struc
 int32_t compute_prop_time(int32_t initiator_roundtrip,
       int32_t initiator_reply, int32_t replier_roundtrip,
       int32_t replier_reply);
+
+/* int64_t compute_prop_time(int64_t initiator_roundtrip, int64_t initiator_reply, */
+/*     int64_t replier_roundtrip, int64_t replier_reply); */
 
 #endif /* __TSCH_LOC_H__ */

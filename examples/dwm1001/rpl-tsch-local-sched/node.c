@@ -37,17 +37,22 @@
  */
 
 #include "contiki.h"
+#include "linkaddr.h"
 #include "node-id.h"
 #include "net/rpl/rpl.h"
 #include "net/ipv6/uip-ds6-route.h"
 #include "nbr-table.h"
 #include "net/mac/tsch/tsch.h"
 #include "net/rpl/rpl-private.h"
+#include <stdio.h>
 #if WITH_ORCHESTRA
 #include "orchestra.h"
 #else
 #include "schedule.h"
 #endif
+
+#include "dev/uart0.h"
+#include "nrfx_log.h"
 
 #include "leds.h"
 
@@ -59,8 +64,14 @@
 #include "button-sensor.h"
 #endif /* CONFIG_VIA_BUTTON */
 
+#define SPEED_OF_LIGHT_M_PER_S 299702547.236
+#define SPEED_OF_LIGHT_M_PER_UWB_TU ((SPEED_OF_LIGHT_M_PER_S * 1.0E-15) * 15650.0) // around 0.00469175196
+
 /*---------------------------------------------------------------------------*/
 PROCESS(node_process, "RPL Node");
+/* PROCESS(TSCH_PROP_PROCESS, "TSCH localization User Process"); */
+
+
 #if CONFIG_VIA_BUTTON
 AUTOSTART_PROCESSES(&node_process, &sensors_process);
 #else /* CONFIG_VIA_BUTTON */
@@ -183,19 +194,42 @@ static void print_configuration() {
 
 }
 
-/* static void add_ranging_slot_for_neighbor(uip_ipaddr_t *br_prefix) { */
-/*     // add new tsch slotframe */
+void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
+    // use uart0_writeb(char byte) to write range
+    char buffer[20];
 
-/*   if(br_prefix) { */
-/*       // add at offset 4 a prop type link */
-/*       tsch_schedule_add_link(sf_eb, LINK_OPTION_TX | */
-/*           LINK_OPTION_RX | */
-/*           LINK_OPTION_SHARED | */
-/*           LINK_OPTION_TIME_KEEPING | */
-/*           LINK_OPTION_TIME_KEEPING_SENDER, */
-/*           LINK_TYPE_NORMAL, &tsch_broadcast_address, 4, 0); */
+    int length = snprintf(buffer, 20, "%u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range ) );
+
+    for (int i = 0; i < length; i++) {
+        uart0_writeb(buffer[i]);
+    }
+}
+
+/* PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data) */
+/* { */
+/*   PROCESS_BEGIN(); */
+
+/*   printf("custom tsch_loc_operation handler start\n"); */
+
+/*   static struct tsch_neighbor *n = NULL; */
+
+/*   while(1) { */
+/*     PROCESS_YIELD(); */
+/*     /\* receive a new propagation time measurement *\/ */
+/*     if(ev == PROCESS_EVENT_MSG){ */
+/*         n = (struct tsch_neighbor *) data; */
+
+/*         float range = n->last_prop_time.prop_time * SPEED_OF_LIGHT_M_PER_UWB_TU; */
+/*         uint8_t addr_short = n->addr.u8[LINKADDR_SIZE-1]; */
+
+/*         /\* output_range_via_serial(range); *\/ */
+/*         output_range_via_serial_snprintf(addr_short, range); */
+/*     } */
 /*   } */
+
+/*   PROCESS_END(); */
 /* } */
+
 
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(node_process, ev, data)
@@ -289,20 +323,16 @@ PROCESS_THREAD(node_process, ev, data)
   while(1) {
     /* print_network_status(); */
     PROCESS_YIELD_UNTIL(etimer_expired(&et));
-    // print tsch status, did we associate yet?
-    /* printf("tsch_is_associated = %d\n", tsch_is_associated); */
-
-    /* tsch_schedule_print(); */
 
     // if tsch_is_associated add for each neighbor a ranging slot
     if(tsch_is_associated) {
         rpl_print_neighbor_list();
-        leds_toggle(LEDS_3);        
+        leds_toggle(LEDS_3);
     }
 
     etimer_reset(&et);
   }
-    
+
 
   PROCESS_END();
 }
