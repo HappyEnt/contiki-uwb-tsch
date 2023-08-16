@@ -1412,7 +1412,6 @@ dw1000_driver_set_object(radio_param_t param,
       return RADIO_RESULT_INVALID_VALUE;
     }
     uint16_t delay = ((uint8_t *)src)[0] | ((uint8_t *)src)[1] << 8;
-    printf("d %d \n", delay);
     dw1000_schedule_tx_mtm(delay);
 
     return RADIO_RESULT_OK;
@@ -1987,9 +1986,9 @@ dw1000_schedule_tx_mtm(uint16_t delay_us)
 {
   uint64_t schedule_time = dw_get_device_time();
   /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
-  schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
 
   schedule_time = schedule_time + US_TO_RADIO(delay_us);
+  schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
 
   dw_set_dx_timestamp(schedule_time);
 

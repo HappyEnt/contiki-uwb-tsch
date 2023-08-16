@@ -50,21 +50,40 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 #if TSCH_MTM_LOCALISATION
 
 // depends on frame length
-#define TSCH_MTM_PROP_MAX_NEIGHBORS 20
+#define TSCH_MTM_PROP_MAX_NEIGHBORS 10
 // defines the maximum amount of measurements we will store
 #define TSCH_MTM_PROP_MAX_MEASUREMENT 5
 
-void add_mtm_reception_timestamp(linkaddr_t *neighbor_addr, struct tsch_asn_t *asn, uint64_t rx_timestamp_A, uint64_t rx_timestamp_B, uint64_t tx_timestamp_B);
-void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
-// requires passing of the asn. Currently not used, but could in future be used when the duration
-// between measurements increases. This would allow us to give a measurement of how outdated or bad
-// the measurement is.
+
+// define ranging_addr_t as uint8_t for now
+typedef uint8_t ranging_addr_t;
 
 struct distance_measurement {
     linkaddr_t *addr;
     float range;
     int32_t tof;
 };
+
+struct mtm_packet_timestamp {
+    ranging_addr_t addr;
+    uint64_t rx_timestamp;
+};
+
+void add_mtm_reception_timestamp(
+    linkaddr_t *neighbor_addr,
+    struct tsch_asn_t *asn,
+
+    uint64_t rx_timestamp_A,    
+    uint64_t tx_timestamp_B,
+    
+    struct mtm_packet_timestamp *rx_timestamps,
+    uint8_t num_rx_timestamps
+    );
+
+void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
+// requires passing of the asn. Currently not used, but could in future be used when the duration
+// between measurements increases. This would allow us to give a measurement of how outdated or bad
+// the measurement is.
 
 
 /* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
@@ -82,10 +101,11 @@ tsch_packet_parse_multiranging_packet(
     uint8_t seqno,
     frame802154_t *frame,
     // timestamps
-    uint64_t *timestamp_rx_B,
-    uint64_t *timestamp_tx_B
+    uint64_t *timestamp_tx_B,
+    struct mtm_packet_timestamp **rx_timestamps,
+    uint8_t *num_timestamps
     );
-
+    
 #endif // TSCH_MTM_LOCALISATION
 /********** Functions *********/
 

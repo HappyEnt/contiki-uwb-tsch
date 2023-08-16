@@ -1721,7 +1721,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
       mac_tx_status = MAC_TX_ERR;
     }
     if(mac_tx_status != MAC_TX_OK){
-      printf("TX localisation error at step %u ASN %u %u channel %u\n", step, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
+      _PRINTF("TX localisation error at step %u ASN %u %u channel %u\n", step, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
     }
     tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
 
@@ -2210,11 +2210,15 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
       /* no packets on air */
       /* write_byte('s'); */
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
+      _PRINTF("mtm missed\n");
   } else {
       static frame802154_t frame;
       static int header_len;
       static linkaddr_t source_address;
       static linkaddr_t destination_address;
+
+      static struct mtm_packet_timestamp *rx_timestamps;
+      static uint8_t num_rx_timestamps;
 
       // null timestamps
       timestamp_rx_A = 0x0;
@@ -2236,11 +2240,13 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
       // get rx_timestamp
       NETSTACK_RADIO.get_object(RADIO_LOC_LAST_RX_TIMESPTAMP, &timestamp_rx_A, sizeof(uint64_t));
 
-      printf("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]);
+      _PRINTF("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]);
+      
       // parse ranging packet
-      tsch_packet_parse_multiranging_packet(packet_buf, packet_len, 0, &frame, &timestamp_rx_B, &timestamp_tx_B);
-      add_mtm_reception_timestamp(&source_address, &tsch_current_asn,  timestamp_rx_A, timestamp_rx_B, timestamp_tx_B);
-      printf("--------------Finished----------------\n");
+      tsch_packet_parse_multiranging_packet(packet_buf, packet_len, 0, &frame, &timestamp_tx_B, &rx_timestamps, &num_rx_timestamps);
+      add_mtm_reception_timestamp(&source_address, &tsch_current_asn,  timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
+      
+      _PRINTF("--------------Finished----------------\n");
   }
 
   /* Copy packet (msg1) to the radio buffer*/
