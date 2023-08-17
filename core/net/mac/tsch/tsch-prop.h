@@ -58,10 +58,25 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 // define ranging_addr_t as uint8_t for now
 typedef uint8_t ranging_addr_t;
 
+enum measurement_type {
+    TDOA,
+    TWR
+};
+
 struct distance_measurement {
-    linkaddr_t *addr;
-    float range;
-    int32_t tof;
+    enum measurement_type type;
+
+    /* In case that the measurement type is of type TWR, addr_a and addr_b denote the two nodes, for
+     * which we calculated the time of flight. Note that in most cases addr_a will therefore be our
+     * own address, but off course we are also able to calculate other distances by using the other
+     * timestamps that we get through our ranging messages. In case that the measurement type is
+     * TDOA, addr_a and addr_B will always be the two anchor nodes towards whom we estimate the time
+     * difference of arrival.
+     */
+    ranging_addr_t addr_A;
+    ranging_addr_t addr_B;
+    
+    int32_t time;
 };
 
 struct mtm_packet_timestamp {
@@ -85,6 +100,7 @@ void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestam
 // between measurements increases. This would allow us to give a measurement of how outdated or bad
 // the measurement is.
 
+float time_to_dist(int32_t tof);
 
 /* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
 int tsch_packet_create_multiranging_packet(

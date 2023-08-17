@@ -199,7 +199,18 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
     // use uart0_writeb(char byte) to write range
     char buffer[20];
 
-    int length = snprintf(buffer, 20, "%u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range ) );
+    int length = snprintf(buffer, 20, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range ) );
+
+    for (int i = 0; i < length; i++) {
+        uart0_writeb(buffer[i]);
+    }
+}
+
+void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
+    // use uart0_writeb(char byte) to write range
+    char buffer[30];
+
+    int length = snprintf(buffer, 30, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -212,21 +223,23 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
 
   printf("custom tsch_loc_operation handler start\n");
 
-  static struct distance_measurement *n = NULL;
+  static struct distance_measurement *m = NULL;
 
   while(1) {
     PROCESS_YIELD();
     /* receive a new propagation time measurement */
-    if(ev == PROCESS_EVENT_MSG){
-        n = (struct distance_measurement *) data;
+    if(ev == PROCESS_EVENT_MSG) {
+        m = (struct distance_measurement *) data;
 
-        printf("sending range to host, tof is: %u \n", n->tof);
-
-        float range = n->tof * SPEED_OF_LIGHT_M_PER_UWB_TU;
-        uint8_t addr_short = n->addr->u8[LINKADDR_SIZE-1];
-
-        /* output_range_via_serial(range); */
-        output_range_via_serial_snprintf(addr_short, range);
+        /* printf("sending range to host, tof is: %u \n", n->tof); */
+        float dist = time_to_dist(m->time);
+        if(m->type == TWR) {
+            ranging_addr_t addr_short = m->addr_B;
+            output_range_via_serial_snprintf(addr_short, dist);
+        } else if (m->type == TDOA) {
+            /* printf("TDOA between %u and %u is %d\n", m->addr_A, m->addr_B, m->time); */
+            output_tdoa_via_serial(m->addr_A, m->addr_B, dist);
+        }
     }
   }
 
@@ -263,7 +276,7 @@ PROCESS_THREAD(node_process, ev, data)
   coordinator_candidate = (node_id == 1);
 #elif CONTIKI_TARGET_DWM1001
   printf("linkaddr_node_addr.u8[LINKADDR_SIZE-1] = %d\n", linkaddr_node_addr.u8[LINKADDR_SIZE-1]);
-  coordinator_candidate = (linkaddr_node_addr.u8[LINKADDR_SIZE-1] == 0xFE);
+  coordinator_candidate = linkaddr_cmp(&linkaddr_node_addr, &node_0_ll);
 #endif
 
   if(coordinator_candidate) {
@@ -322,7 +335,7 @@ PROCESS_THREAD(node_process, ev, data)
   /* struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(4, 20); */
 
   /* Print out routing tables every minute */
-  etimer_set(&et, CLOCK_SECOND*1);
+  etimer_set(&et, CLOCK_SECOND*2);
   while(1) {
     /* print_network_status(); */
     PROCESS_YIELD_UNTIL(etimer_expired(&et));
@@ -331,6 +344,7 @@ PROCESS_THREAD(node_process, ev, data)
     if(tsch_is_associated) {
         rpl_print_neighbor_list();
         leds_toggle(LEDS_3);
+        print_network_status();
     }
 
     etimer_reset(&et);
