@@ -1728,8 +1728,11 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
     uint16_t rx_timeout_us;
     rx_timeout_us = 0;
     NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
-
   }
+
+  if(current_link->timeslot == 6) {
+      /* mtm_end_of_round(); */
+  }      
 
 
   TSCH_DEBUG_TX_EVENT();
@@ -2147,11 +2150,12 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
     if(reference_tx != timestamp_tx) {
       printf("MTM: TX timestamp mismatch: \n");
     }
-    
   } else {
      add_mtm_transmission_timestamp(&tsch_current_asn, UINT64_MAX);
      printf("MTM: TX failed: 2\n");
   }
+
+  /* printf("packet length: %d\n", packet_len); */
 
   TSCH_DEBUG_TX_EVENT();
 
@@ -2222,7 +2226,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
       _PRINTF("mtm missed\n");
 
-      // missed packet, we will set all timestamps to UINT64_T_MAX
+      // we received nuthing
       /* add_mtm_reception_timestamp(&current_link->addr, &tsch_current_asn, UINT64_MAX, UINT64_MAX, NULL, 0); */
   } else {
 
@@ -2249,27 +2253,36 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
           frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
 
-          _PRINTF("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]);
+          printf("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]);
+
       
           num_rx_timestamps = 0;
           rx_timestamps = NULL;
-      
+
           // parse ranging packet
-          if(tsch_packet_parse_multiranging_packet(packet_buf, packet_len, 0, &frame, &timestamp_tx_B, &rx_timestamps, &num_rx_timestamps)) {
-              add_mtm_reception_timestamp(&source_address, &tsch_current_asn,  timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
+          if(tsch_packet_parse_multiranging_packet(packet_buf, packet_len, current_link->timeslot, &frame, &timestamp_tx_B, &rx_timestamps, &num_rx_timestamps)) {
+              uint8_t neighbor = source_address.u8[LINKADDR_SIZE-1];
+              uint8_t timeslot_offset = current_link->timeslot;
+              add_to_direct_observed_rx_to_queue(timestamp_rx_A, neighbor, timeslot_offset);
+              add_mtm_reception_timestamp(neighbor, &tsch_current_asn,  timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
           } else {
               printf("mtm parse failed\n");
           }
+
       
           _PRINTF("--------------Finished----------------\n");
+
+      } else {
+          /* add_mtm_reception_timestamp(&current_link->addr, &tsch_current_asn, UINT64_MAX, UINT64_MAX, NULL, 0); */
       }
 
       tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);      
   }
 
-  /* Copy packet (msg1) to the radio buffer*/
-
-  TSCH_DEBUG_TX_EVENT();
+  // if this is the last ranging timeslot execute end of round handler
+  if(current_link->timeslot == 6) {
+      /* mtm_end_of_round(); */
+  }
 
   #if TSCH_SLEEP
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);

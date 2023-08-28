@@ -48,17 +48,19 @@
 #include "net/mac/tsch/tsch-schedule.h"
 #include "dev/radio.h"
 #include "memb.h"
-
+#include "lib/random.h"
 
 #include "nrfx_log.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/_stdint.h>
 
 #include "dw1000-driver.h"
 #include "dw1000-ranging-bias.h"
+#include "tsch-slot-operation.h"
 
 #if TSCH_MTM_LOCALISATION
 
@@ -109,26 +111,42 @@ int32_t mtm_compute_tdoa(struct mtm_pas_tdoa *ts);
 
 #endif
 
+enum mtm_neighbor_type  {
+    MTM_DIRECT_NEIGHBOR,
+    MTM_TWO_HOP_NEIGHBOR,
+};
 
+enum mtm_node_role {
+    MTM_PASSIVE,
+    MTM_ACTIVE,
+    MTM_ANCHOR // an anchor is a active participant that never loses its slot 
+};
+
+#define MAX_MISSED_OBSERVATIONS 5 // after not observing a neighbor for 5 rounds we will consider him a goner
 
 struct mtm_neighbor {
     struct mtm_neighbor *next;
 
-    linkaddr_t neighbor_addr;
+    ranging_addr_t neighbor_addr;
     struct ds_twr_ts ts;
     
     struct distance_measurement last_measurement;
+
+    enum mtm_neighbor_type type;
+
+    uint8_t missed_observations, observed_this_round, timeslot_offset;
 };
 
-void mtm_compute_propagation_time(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n);
+void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n);
 /* float calculate_propagation_time_alternative(struct ds_twr_ts *ts); */
 int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts);
 
 // in the following we use the value -1 for uninitialized timestamps
 struct mtm_rx_queue_item {
     struct mtm_rx_queue_item *next;
-    linkaddr_t neighbor_addr;
+    ranging_addr_t neighbor_addr;
     uint64_t rx_timestamp;
+    uint8_t timeslot_offset;
 };
 
 struct mtm_timestamp_assoc {
@@ -152,10 +170,15 @@ MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MT
 // this will be used to return a array of timestamps that we read from the user
 static struct mtm_packet_timestamp return_timestamps[TSCH_MTM_PROP_MAX_NEIGHBORS];
 
+static enum mtm_node_role mtm_current_node_role = MTM_PASSIVE;
+static uint8_t mtm_active_our_timeslot = 0;
+static uint8_t mtm_active_missed_observations = 0;
+
 
 // protos
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts);
 void print_ds_twr_timestamps(struct ds_twr_ts *ts);
+void print_mtm_neighbors();
 void notify_user_process_new_measurement(struct distance_measurement *measurement);
 
 // for all timestamps check overflow condition. The internal clock of the decawave transceiver will overflow roughly every 17 seconds
@@ -193,11 +216,261 @@ void init_tdoa_struct(struct mtm_pas_tdoa *tdoa) {
     tdoa->r_l4 = UINT64_MAX;    
     init_ds_twr_struct(&tdoa->ds_ts);
 }
+
+int pas_tdoa_all_initialized(struct mtm_pas_tdoa *tdoa) {
+    if (tdoa->r_l1 == UINT64_MAX) return 0;
+    if (tdoa->r_l2 == UINT64_MAX) return 0;
+    if (tdoa->r_l3 == UINT64_MAX) return 0;
+    if (tdoa->r_l4 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.r_a1 == UINT64_MAX) return 0;
+    /* if (tdoa->ds_ts.r_a2 == UINT64_MAX) return 0; */
+    if (tdoa->ds_ts.r_b1 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.r_b2 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.t_a1 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.t_a2 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.t_b1 == UINT64_MAX) return 0;
+    /* if (tdoa->ds_ts.t_b2 == UINT64_MAX) return 0; */
+    return 1;
+}
+
 #endif
 
+void print_mtm_neighbors() {
+    printf("-------MTM NEIGHBORS-------\n");
+    struct mtm_neighbor *n = NULL;
+    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+        printf("%d, type: %d, timeslot %d, missed_observations: %d \n", n->neighbor_addr, n->type, n->timeslot_offset, n->missed_observations);
+    }
+}
+
+
+void mtm_scheduling_decision() {
+    uint8_t occupied_timeslots[7] = {0x00};
+
+    //iterate over links an mark all links that are not of type MTM_PROP as unavailable
+    
+    struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
+    if(sf_eb != NULL) {
+        struct tsch_link *l = NULL;
+        for(l = list_head(sf_eb->links_list); l != NULL; l = list_item_next(l)) {
+            if (l->link_type != LINK_TYPE_PROP_MTM) {
+                occupied_timeslots[l->timeslot] = 1;
+            }
+        }
+    }
+
+    /* occupied_timeslots[0] = 1; */
+    printf("scheduling_decision, current Role: %d, with slot: %d\n", mtm_current_node_role, mtm_active_our_timeslot);
+    
+    // iterate over neighbor table
+    struct mtm_neighbor *n = NULL;
+    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+        // if we have a two hop neighbor and we have a direct/indirect neighbor and we didn't observe it for some time we remove it
+
+        if(!n->observed_this_round) {
+            n->missed_observations++;
+        }
+        
+        if (n->missed_observations >= MAX_MISSED_OBSERVATIONS) {
+            // remove from list
+            list_remove(ranging_neighbor_list, n);
+            // free memory
+            memb_free(&mtm_prop_neighbor_memb, n);
+        } else {
+            // entry still valid, mark timeslot as occupied
+            occupied_timeslots[n->timeslot_offset] = 1;
+        }
+    }
+
+    // in case that we already have a timeslot, skip
+    if (mtm_current_node_role == MTM_ACTIVE || mtm_current_node_role == MTM_ANCHOR) {
+        return;
+    }
+
+    // if there is a free timeslot we will take it greedily
+    printf("mtm_scheduling_decision: checking for free timeslots\n");
+    for (int i = 0; i < 7; i++) {
+        if (!occupied_timeslots[i]) {
+            mtm_active_our_timeslot = i; // we have to skip the first slot
+            mtm_current_node_role = MTM_ACTIVE;            
+            mtm_active_missed_observations = 0;
+            // we found a free timeslot, lets create a tx link here for ourselves
+
+            printf("taking slot %d\n", mtm_active_our_timeslot);
+            
+            struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
+            if(sf_eb != NULL) {
+                struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, i);
+                l->link_options = LINK_OPTION_TX;
+            }
+            
+            break;
+        }
+    }
+}
+
+void mtm_indirect_observed_node(ranging_addr_t neighbor, uint8_t timeslot_offset) {
+    struct mtm_neighbor *n = NULL;
+    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+        if (n->neighbor_addr == neighbor) {
+            break;
+        }
+    }
+
+    if (n != NULL) {
+        // in case that the entry is a of MTM_DIRECT_TYPE we will do nothing
+        if (n->type == MTM_TWO_HOP_NEIGHBOR) {
+            n->missed_observations = 0;
+            n->observed_this_round = 1;            
+        }
+    } else {
+        // create new neighbor
+        struct mtm_neighbor *new_neighbor = memb_alloc(&mtm_prop_neighbor_memb);
+        if (new_neighbor != NULL) {
+            new_neighbor->neighbor_addr = neighbor;
+            new_neighbor->type = MTM_TWO_HOP_NEIGHBOR;
+            new_neighbor->missed_observations = 0;
+            new_neighbor->observed_this_round = 1;
+            new_neighbor->timeslot_offset = timeslot_offset;
+            list_add(ranging_neighbor_list, new_neighbor);
+        }
+    }
+}
+
+void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
+  // we don't pass this outside so we will just add it here for now
+  // iterate over neighbor table
+  struct mtm_neighbor *n = NULL;
+  for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+      if (n->neighbor_addr == node) {
+          break;
+      }
+  }
+
+  if (n != NULL) {
+      // set neighbor type to direct neighbor
+      n->type = MTM_DIRECT_NEIGHBOR;
+      n->missed_observations = 0;
+      n->observed_this_round = 1;
+      n->timeslot_offset = timeslot_offset;
+  }
+}
+
+void mtm_update_schedule() {
+    print_mtm_neighbors();    
+    mtm_scheduling_decision();
+
+    if (mtm_current_node_role == MTM_ACTIVE && mtm_active_missed_observations > 50) {
+        mtm_current_node_role = MTM_PASSIVE;
+        mtm_active_missed_observations = 0;
+        printf("resetting\n");
+
+        // install rx link again
+        tsch_get_lock();
+        struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);            
+
+        if(sf_eb != NULL) {
+            struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, mtm_active_our_timeslot);
+            l->link_options = LINK_OPTION_RX;
+        }
+
+        tsch_release_lock();
+    }
+}
+
+void mtm_end_of_round() {
+    // increase missed observations for all nodes that we did not observe this round
+    struct mtm_neighbor *n = NULL;
+    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
+        if (!n->observed_this_round) {
+            n->missed_observations++;
+        }
+    }
+}
+
+void mtm_init(uint8_t is_coordinator) {
+  uint16_t timeslot_amount = 7;
+  
+  struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, timeslot_amount);
+  tsch_schedule_add_link(
+          sf_eb,
+          LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
+          LINK_TYPE_ADVERTISING,
+          &tsch_broadcast_address,
+          0,
+          0);
+    // if our node_role is role_6dr we will take the first TX slot
+
+
+
+    tsch_schedule_add_link(
+            sf_eb,
+            is_coordinator ? LINK_OPTION_TX : LINK_OPTION_RX,
+            LINK_TYPE_PROP_MTM,
+            &tsch_broadcast_address,
+            1,
+            0
+        );
+
+    // initialize all other links as RX PROP MTM
+    for(int i = 2; i < timeslot_amount; i++) {
+            tsch_schedule_add_link(
+                sf_eb,
+                LINK_OPTION_RX,
+                LINK_TYPE_PROP_MTM,
+                &tsch_broadcast_address,
+                i,
+                0);
+    }
+
+
+    if(is_coordinator) {
+        mtm_current_node_role = MTM_ANCHOR;
+        mtm_active_our_timeslot = 1;
+    } else {
+        mtm_current_node_role = MTM_PASSIVE;
+    }
+}
+
+
+void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset) {
+    // first update our own outgoing rx queue
+
+    struct mtm_rx_queue_item *t = NULL;
+    
+    if (list_length (rx_send_queue) >= TSCH_MTM_PROP_MAX_NEIGHBORS) {
+        printf("MTM: RX queue full, dropping received timestamp\n");
+        return;
+    }
+
+    // since we are space constrained if there is already a timestamp for the neighbor, we will replace that entry in our queue
+    for(t = list_head(rx_send_queue); t != NULL; t = list_item_next(t)) {
+        if (t->neighbor_addr == neighbor) {
+            break;
+        }
+    }
+
+    if (t != NULL) {
+        // replace entry
+        t->rx_timestamp = rx_timestamp;
+        t->neighbor_addr = neighbor;
+    } else {
+        t = memb_alloc(&mtm_prop_rx_memb);
+
+        if (t != NULL) {
+            t->rx_timestamp = rx_timestamp;
+            t->neighbor_addr = neighbor;
+            t->timeslot_offset = timeslot_offset;
+            list_add(rx_send_queue, t);
+        } else {
+            printf("MTM: Could not allocate memory for reception timestamp\n");
+            return;
+        }
+    }
+}
 
 void add_mtm_reception_timestamp(
-    linkaddr_t *neighbor_addr,
+    ranging_addr_t neighbor_addr,
     struct tsch_asn_t *asn,
 
     uint64_t rx_timestamp_A,    
@@ -207,29 +480,10 @@ void add_mtm_reception_timestamp(
     uint8_t num_rx_timestamps
     )
 {
-    struct mtm_rx_queue_item *t = NULL;
-
-    // first update our own outgoing rx queue
-    if (list_length (rx_send_queue) >= TSCH_MTM_PROP_MAX_NEIGHBORS) {
-        printf("MTM: RX queue full, dropping received timestamp\n");
-        return;
-    }
-
-    t = memb_alloc(&mtm_prop_rx_memb);
-
-    if (t != NULL) {
-        t->rx_timestamp = rx_timestamp_A;
-        linkaddr_copy(&t->neighbor_addr, neighbor_addr);
-        list_add(rx_send_queue, t);
-    } else {
-        printf("MTM: Could not allocate memory for reception timestamp\n");
-        return;
-    }
-
     // next update our neighbor table
     struct mtm_neighbor *n = NULL;
     for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
-        if (linkaddr_cmp(&n->neighbor_addr, neighbor_addr)) {
+        if (n->neighbor_addr == neighbor_addr) {
             break;
         }
     }
@@ -240,7 +494,7 @@ void add_mtm_reception_timestamp(
         // register neighbor in our ranging structure
         n = memb_alloc(&mtm_prop_neighbor_memb);
         if (n != NULL) {
-            linkaddr_copy(&n->neighbor_addr, neighbor_addr);
+            n->neighbor_addr =  neighbor_addr;
             init_ds_twr_struct(&n->ts);
             list_add(ranging_neighbor_list, n);
         } else {
@@ -256,7 +510,7 @@ void add_mtm_reception_timestamp(
 
     
     // address of neighbor
-    ranging_addr_t m_addr = n->neighbor_addr.u8[LINKADDR_SIZE-1];
+    ranging_addr_t m_addr = n->neighbor_addr;
     
     for(uint8_t i = 0; i < num_rx_timestamps; i++) {
         ranging_addr_t rx_addr;
@@ -315,10 +569,10 @@ void add_mtm_reception_timestamp(
             pas_tdoa->ds_ts.r_a1 = rx_timestamp;
 
             pas_tdoa->ds_ts.r_b1 = pas_tdoa->ds_ts.r_b2;
-            pas_tdoa->ds_ts.r_b2 = UINT64_MAX; // do be filled in by the responder message in the other case below
+            pas_tdoa->ds_ts.r_b2 = UINT64_MAX; // to be filled in by the responder message in the other case below
 
             pas_tdoa->ds_ts.t_b1 = pas_tdoa->ds_ts.t_b2;
-            pas_tdoa->ds_ts.t_b2 = UINT64_MAX; // do be filled in by the responder message in the other case below
+            pas_tdoa->ds_ts.t_b2 = UINT64_MAX; // to be filled in by the responder message in the other case below
             
         } else if (pas_tdoa->B_addr == m_addr) {
             // this message concludes the round, calculate new TDoA estimate
@@ -328,15 +582,19 @@ void add_mtm_reception_timestamp(
             pas_tdoa->ds_ts.t_b2 = tx_timestamp_B;
             pas_tdoa->r_l4 = rx_timestamp_A;
 
-            tdoa = mtm_compute_tdoa(pas_tdoa);
+            // check whether we have uninitialized entries
 
-            // update stored most recent measurement and notify user
-            pas_tdoa->last_measurement.type = TDOA;
-            pas_tdoa->last_measurement.addr_A = rx_addr;
-            pas_tdoa->last_measurement.addr_B = m_addr;
-            pas_tdoa->last_measurement.time = tdoa;
+            if(pas_tdoa_all_initialized(pas_tdoa)) {
+                tdoa = mtm_compute_tdoa(pas_tdoa);
+
+                // update stored most recent measurement and notify user
+                pas_tdoa->last_measurement.type = TDOA;
+                pas_tdoa->last_measurement.addr_A = rx_addr;
+                pas_tdoa->last_measurement.addr_B = m_addr;
+                pas_tdoa->last_measurement.time = tdoa;
             
-            notify_user_process_new_measurement(&pas_tdoa->last_measurement);
+                notify_user_process_new_measurement(&pas_tdoa->last_measurement);                
+            }
         }
 
         /* linkaddr_t *neighbor_addr, */
@@ -359,21 +617,18 @@ void add_mtm_reception_timestamp(
                 n->ts.t_b2 = tx_timestamp_B;
                 n->ts.r_a2 = rx_timestamp_A;
 
-                mtm_compute_propagation_time(asn, n);
+                mtm_compute_dstwr(asn, n);
                 found_rx = 1;
         }
     }
 
     if (!found_rx) {
-        // we did not find our own rx_timestamp, we will therefore set r_b2, t_b2 and r_a2 to UINT64_MAX so we don't calculate invalid timestamps
-        printf("MTM: Did not find our own rx_timestamp, set r_b2, t_b2 and r_a2 to UINT64_MAX\n");
-        n->ts.r_b1 = n->ts.r_b2;
-        n->ts.t_b1 = n->ts.t_b2;
-        n->ts.r_a1 = n->ts.r_a2;
-        
-        n->ts.r_b2 = UINT64_MAX;
-        n->ts.t_b2 = UINT64_MAX;
-        n->ts.r_a2 = UINT64_MAX;
+        // Here we could perform different strategies, what we do now is in case that if we don't find a reception timestmap
+        // which was generated on device B in as a result of our transmission, then we just reset the whole structure
+        // Another strategy could be leaving the partial good timestamps from the first transmissions and just delete
+        // the last failed transmission timestmap t_a2.
+        /* printf("MTM: Did not find our own rx_timestamp, reset ranging structure\n"); */
+        init_ds_twr_struct(&n->ts);
     }
 }
 
@@ -433,7 +688,7 @@ void notify_user_process_new_measurement(struct distance_measurement *measuremen
       PROCESS_EVENT_MSG, (void *) measurement);
 }
 
-void mtm_compute_propagation_time(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
+void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
     // first check whether neighbor has a valid entry in our list and none of the timestamps are uninitialized, i.e., of value UINT64_MAX;
 
     if (mtm_n == NULL) {
@@ -467,12 +722,12 @@ void mtm_compute_propagation_time(struct tsch_asn_t *asn, struct mtm_neighbor *m
 
     // bias correction in centimeters
     /* bias_correction = dw1000_getrangebias(n->last_prop_time.tsch_channel, range); */
-    _PRINTF("bias uncorrected range to %u: " NRF_LOG_FLOAT_MARKER "\n", mtm_n->neighbor_addr.u8[LINKADDR_SIZE-1], NRF_LOG_FLOAT(range));
+    _PRINTF("bias uncorrected range to %u: " NRF_LOG_FLOAT_MARKER "\n", mtm_n->neighbor_addr, NRF_LOG_FLOAT(range));
     _PRINTF("prop time to %u: %d\n", mtm_n->neighbor_addr.u8[LINKADDR_SIZE-1], prop_time);
     // call into existing methods for passing data to user
 
-    // Added for debugging remove again
-    if (range < -10) {
+    // TODO Added for debugging remove again
+    if (range < -10 || range > 10) {
         print_ds_twr_timestamps(&mtm_n->ts);        
         print_ds_twr_durations(&mtm_n->ts);
     }
@@ -480,7 +735,7 @@ void mtm_compute_propagation_time(struct tsch_asn_t *asn, struct mtm_neighbor *m
     // update stored measurement for node
     mtm_n->last_measurement.type = TWR;
     mtm_n->last_measurement.addr_A = linkaddr_node_addr.u8[LINKADDR_SIZE-1];
-    mtm_n->last_measurement.addr_B = mtm_n->neighbor_addr.u8[LINKADDR_SIZE-1];
+    mtm_n->last_measurement.addr_B = mtm_n->neighbor_addr;
     mtm_n->last_measurement.time = prop_time;
     
     notify_user_process_new_measurement(&mtm_n->last_measurement);
@@ -536,6 +791,10 @@ int tsch_packet_create_multiranging_packet(
     return 0;
   }
 
+  // add our candidate bitmask
+  /* memcpy(&buf[curr_len], candidate_bitmask, sizeof(candidate_bitmask)); */
+  /* curr_len = curr_len + sizeof(candidate_bitmask); */
+
   // add tx_timestamp
   memcpy(&buf[curr_len], &tx_timestamp, sizeof(uint64_t));
   curr_len = curr_len + sizeof(uint64_t);
@@ -550,12 +809,14 @@ int tsch_packet_create_multiranging_packet(
   curr_len = curr_len + sizeof(uint8_t);
 
   for(t = list_head(rx_send_queue); t != NULL; t = list_item_next(t)) {
-      memcpy(&buf[curr_len], &t->neighbor_addr.u8[LINKADDR_SIZE-1], sizeof(uint8_t));
+      memcpy(&buf[curr_len], &t->neighbor_addr, sizeof(uint8_t));
+      curr_len = curr_len + sizeof(uint8_t);
+      memcpy(&buf[curr_len], &t->timeslot_offset, sizeof(uint8_t));
       curr_len = curr_len + sizeof(uint8_t);
       memcpy(&buf[curr_len], &t->rx_timestamp, sizeof(uint64_t));
       curr_len = curr_len + sizeof(uint64_t);
 
-      _PRINTF("put %d -> %u%u \n", t->neighbor_addr.u8[LINKADDR_SIZE-1], (uint32_t)(t->rx_timestamp >> 32), (uint32_t)(t->rx_timestamp & 0xFFFFFFFF));
+      _PRINTF("put %d -> %u%u \n", t->neighbor_addr, (uint32_t)(t->rx_timestamp >> 32), (uint32_t)(t->rx_timestamp & 0xFFFFFFFF));
   }
 
   // free all allocated memory for all measurements again
@@ -570,7 +831,7 @@ int
 tsch_packet_parse_multiranging_packet(
     uint8_t *buf,
     int buf_size,
-    uint8_t seqno,
+    uint8_t timeslot_offset,
     frame802154_t *frame,
     // timestamps
     uint64_t *timestamp_tx_B,
@@ -580,7 +841,7 @@ tsch_packet_parse_multiranging_packet(
 {
   uint8_t curr_len = 0;
   int ret;
-  linkaddr_t dest;
+  linkaddr_t dest, src;
 
 
   if(frame == NULL || buf_size < 0) {
@@ -606,11 +867,15 @@ tsch_packet_parse_multiranging_packet(
   }
 
   /* Check destination address (if any) */
-  if(frame802154_extract_linkaddr(frame, NULL, &dest) == 0 ||
+  if(frame802154_extract_linkaddr(frame, &src, &dest) == 0 ||
      (!linkaddr_cmp(&dest, &linkaddr_node_addr)
       && !linkaddr_cmp(&dest, &linkaddr_null))) {
     return 0;
   }
+
+  mtm_direct_observed_node( src.u8[LINKADDR_SIZE-1], timeslot_offset);
+  
+  /* curr_len = curr_len + sizeof(candidate_bitmask); */
 
   // if everything is okay we will extract the timestamps
 
@@ -618,21 +883,37 @@ tsch_packet_parse_multiranging_packet(
   uint64_t tx_timestamp;
   // extract rx timestamp amount
   uint8_t amount_of_measurements;
+  uint8_t mtm_found_our_own;
   memcpy(&tx_timestamp, &buf[curr_len], sizeof(uint64_t));
   curr_len = curr_len + sizeof(uint64_t);
   memcpy(&amount_of_measurements, &buf[curr_len], sizeof(uint8_t));
   curr_len = curr_len + sizeof(uint8_t);
   for(int i = 0; i < amount_of_measurements; i++) {
       ranging_addr_t neighbor;
+      uint8_t timeslot_offset;
       uint64_t rx_timestamp;
 
       memcpy(&neighbor, &buf[curr_len], sizeof(uint8_t));
       curr_len = curr_len + sizeof(uint8_t);
+      memcpy(&timeslot_offset, &buf[curr_len], sizeof(uint8_t));
+      curr_len = curr_len + sizeof(uint8_t);      
       memcpy(&rx_timestamp, &buf[curr_len], sizeof(uint64_t));
       curr_len = curr_len + sizeof(uint64_t);
 
+      // update two_hop counter
+      if(neighbor != linkaddr_node_addr.u8[LINKADDR_SIZE-1]) {
+          mtm_indirect_observed_node(neighbor, timeslot_offset);
+      } else {
+          mtm_found_our_own = 1;
+      }
+      
       return_timestamps[i].addr = neighbor;
       return_timestamps[i].rx_timestamp = rx_timestamp;
+  }
+
+  if(mtm_current_node_role == MTM_ACTIVE && !mtm_found_our_own) {
+      mtm_active_missed_observations++;
+
   }
 
   *num_timestamps = amount_of_measurements;

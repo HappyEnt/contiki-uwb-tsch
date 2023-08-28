@@ -81,6 +81,8 @@
 #define RPL_CALLBACK_NEW_DIO_INTERVAL tsch_rpl_callback_new_dio_interval
 #define TSCH_CALLBACK_JOINING_NETWORK tsch_rpl_callback_joining_network
 #define TSCH_CALLBACK_LEAVING_NETWORK tsch_rpl_callback_leaving_network
+#define TSCH_SCHEDULE_CONF_MAX_LINKS 257 // sadly we need a lot of links
+
 
 /* Needed for CC2538 platforms only */
 /* For TSCH we have to use the more accurate crystal oscillator
@@ -172,6 +174,7 @@
 /* #define TSCH_CONF_WITH_LINK_SELECTOR 1 */
 
 #undef DW1000_DATA_RATE
+/* #define DW1000_DATA_RATE DW_DATA_RATE_110_KBPS */
 /* #define DW1000_DATA_RATE DW_DATA_RATE_850_KBPS */
 #define DW1000_DATA_RATE DW_DATA_RATE_6800_KBPS
 
@@ -179,6 +182,7 @@
 /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH  */
 
 #endif
+
 
 
 #if CONTIKI_TARGET_Z1

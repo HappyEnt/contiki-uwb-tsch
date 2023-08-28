@@ -207,7 +207,8 @@
 #ifndef DW1000_SFD_READOUT_OFFSET
   #define DW1000_SFD_READOUT_OFFSET 18
 #endif
-// #define DOUBLE_BUFFERING
+  
+/* #define DOUBLE_BUFFERING 1 */
 
 /* Used to fix an error with an possible interruption before
    the driver initialization */
@@ -227,8 +228,8 @@ static int volatile dw1000_is_delayed_tx = 0;
 
 
 // default values for the antenna delay for the different supported PRF
-static uint16_t dw1000_antenna_delay_prf_64 = 32837u;
-static uint16_t dw1000_antenna_delay_prf_16 = 32837u;
+static uint16_t dw1000_antenna_delay_prf_64 = 16450u;
+static uint16_t dw1000_antenna_delay_prf_16 = 16450u;
 
 
 /* store the current DW1000 configuration */

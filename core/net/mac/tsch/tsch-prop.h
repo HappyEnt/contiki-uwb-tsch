@@ -50,7 +50,7 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 #if TSCH_MTM_LOCALISATION
 
 // depends on frame length
-#define TSCH_MTM_PROP_MAX_NEIGHBORS 10
+#define TSCH_MTM_PROP_MAX_NEIGHBORS 8
 // defines the maximum amount of measurements we will store
 #define TSCH_MTM_PROP_MAX_MEASUREMENT 5
 
@@ -85,7 +85,7 @@ struct mtm_packet_timestamp {
 };
 
 void add_mtm_reception_timestamp(
-    linkaddr_t *neighbor_addr,
+    ranging_addr_t neighbor_addr,
     struct tsch_asn_t *asn,
 
     uint64_t rx_timestamp_A,    
@@ -96,6 +96,13 @@ void add_mtm_reception_timestamp(
     );
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
+void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset);
+void mtm_print_candidates();
+void mtm_init(uint8_t is_coordinator);
+void mtm_take_slots_schedule();
+void mtm_end_of_round();
+void mtm_update_schedule();
+
 // requires passing of the asn. Currently not used, but could in future be used when the duration
 // between measurements increases. This would allow us to give a measurement of how outdated or bad
 // the measurement is.
@@ -114,7 +121,7 @@ int
 tsch_packet_parse_multiranging_packet(
     uint8_t *buf,
     int buf_size,
-    uint8_t seqno,
+    uint8_t timeslot_offset, // yes yes, should be uint16_t but for our design we assume short slotframes for the ranging
     frame802154_t *frame,
     // timestamps
     uint64_t *timestamp_tx_B,

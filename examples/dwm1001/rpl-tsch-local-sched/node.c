@@ -79,6 +79,33 @@ AUTOSTART_PROCESSES(&node_process, &sensors_process);
 AUTOSTART_PROCESSES(&node_process);
 #endif /* CONFIG_VIA_BUTTON */
 
+static struct uip_udp_conn *server_conn;
+#define UIP_IP_BUF   ((struct uip_ip_hdr *)&uip_buf[UIP_LLH_LEN])
+#define UDP_CLIENT_PORT	8765
+#define UDP_SERVER_PORT	5678
+
+#define UDP_EXAMPLE_ID  190
+
+static void
+tcpip_handler(void)
+{
+  char *appdata;
+
+  if(uip_newdata()) {
+    appdata = (char *)uip_appdata;
+    appdata[uip_datalen()] = 0;
+    PRINTF("DATA recv '%s' from ", appdata);
+    PRINTF("%d",
+           UIP_IP_BUF->srcipaddr.u8[sizeof(UIP_IP_BUF->srcipaddr.u8) - 1]);
+    PRINTF("\n");
+#if SERVER_REPLY
+    PRINTF("DATA sending reply\n");
+    uip_ipaddr_copy(&server_conn->ripaddr, &UIP_IP_BUF->srcipaddr);
+    uip_udp_packet_send(server_conn, "Reply", sizeof("Reply"));
+    uip_create_unspecified(&server_conn->ripaddr);
+#endif
+  }
+}
 
 /*---------------------------------------------------------------------------*/
 static void
@@ -186,13 +213,13 @@ static void print_configuration() {
     LOG_CONFIG_ITEM(TSCH_CONF_DEFAULT_TIMESLOT_LENGTH);
     LOG_CONFIG_ITEM(TSCH_CONF_EB_PERIOD);
     LOG_CONFIG_ITEM(TSCH_CONF_MAX_EB_PERIOD);
-
+    LOG_CONFIG_ITEM(PACKETBUF_SIZE);
+    
 #if WITH_ORCHESTRA
     printf(";; SCHEDULE_USED = ORCHESTRA\n");
 #else
     printf(";; SCHEDULE_USED = CUSTOM\n");
 #endif
-
 }
 
 void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
@@ -245,6 +272,15 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
 
   PROCESS_END();
 }
+
+/* void initialize_udp() { */
+/*     server_conn = udp_new(NULL, UIP_HTONS(UDP_CLIENT_PORT), NULL); */
+/*     if(server_conn == NULL) { */
+/*         PRINTF("No UDP connection available, exiting the process!\n"); */
+/*         PROCESS_EXIT(); */
+/*     } */
+/*     udp_bind(server_conn, UIP_HTONS(UDP_SERVER_PORT)); */
+/* } */
 
 
 /*---------------------------------------------------------------------------*/
@@ -314,7 +350,9 @@ PROCESS_THREAD(node_process, ev, data)
   // we add one more slotframe for ranging exchange
 #else
   // pass linkaddress
-  init_custom_schedule();
+  /* init_custom_schedule(); */
+  mtm_init(is_coordinator);
+
 #endif
 
   // delay 5 second before starting
@@ -330,21 +368,31 @@ PROCESS_THREAD(node_process, ev, data)
   etimer_set(&et, CLOCK_SECOND * 2);
   PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
-  tsch_schedule_print();
+
 
   /* struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(4, 20); */
-
+  static uint16_t skip_rounds = 0;
   /* Print out routing tables every minute */
-  etimer_set(&et, CLOCK_SECOND*2);
+  etimer_set(&et, CLOCK_SECOND/4);
   while(1) {
     /* print_network_status(); */
     PROCESS_YIELD_UNTIL(etimer_expired(&et));
 
+    /* if(ev == tcpip_event) { */
+    /*     tcpip_handler(); */
+    /* } */
+
     // if tsch_is_associated add for each neighbor a ranging slot
     if(tsch_is_associated) {
-        rpl_print_neighbor_list();
+        /* rpl_print_neighbor_list(); */
         leds_toggle(LEDS_3);
-        print_network_status();
+        /* print_network_status(); */
+
+        if (skip_rounds > 20) {
+            mtm_update_schedule();
+        } else {
+            skip_rounds++;            
+        }
     }
 
     etimer_reset(&et);
