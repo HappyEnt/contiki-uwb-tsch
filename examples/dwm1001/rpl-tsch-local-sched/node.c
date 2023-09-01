@@ -191,11 +191,13 @@ net_init(uint8_t is_coordinator)
 
 // useful for evaluation, print configuration into log, prefix with ;; for easy parsing
 static void print_configuration() {
-    // use macro instead
+    printf("=Configuration=\n");
+    
     LOG_CONFIG_ITEM(TSCH_CONF_DEFAULT_TIMESLOT_LENGTH);
     LOG_CONFIG_ITEM(TSCH_CONF_EB_PERIOD);
     LOG_CONFIG_ITEM(TSCH_CONF_MAX_EB_PERIOD);
     LOG_CONFIG_ITEM(TSCH_CONF_AUTOSELECT_TIME_SOURCE);
+    LOG_CONFIG_ITEM(LINKADDR_SIZE);
     LOG_CONFIG_ITEM(LOC_WITH_RPL);        
     LOG_CONFIG_ITEM(PACKETBUF_SIZE);
     
@@ -349,7 +351,6 @@ PROCESS_THREAD(node_process, ev, data)
   PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
   // print configuration
-  printf("=print configuration=\n");
   print_configuration();
   // print current schedule
 
@@ -399,8 +400,10 @@ PROCESS_THREAD(node_process, ev, data)
           enum node_role role = MOBILE;
           
           if(manual_chose_role) {
+              printf("manual role chosen\n");
               role = current_node_role;
           } else { // else we will consult the node_roles in nodes.h
+              printf("consulting node_roles\n");
               role = get_role_for_node(&linkaddr_node_addr);
           }
 

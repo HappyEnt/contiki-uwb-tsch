@@ -379,18 +379,19 @@ static uint8_t try_lottery() {
     return toss_coin(); // the lottery in the algorithm is a little more complicated, but I don't understand what they mean at all ...
 }
 
+#define GRANT_MSG_NEIGHBOR_CNT_POS 2
 
 static void send_grant(uint8_t roundNumber, const linkaddr_t *to_addr) {
     uint8_t buf[100];
-    uint8_t curr_len = 0, neighbor_count_pos = 0;
+    uint8_t curr_len = 0;
     buf[curr_len] = DRAND_MSG_GRANT;
     curr_len++;
     buf[curr_len] = roundNumber;
     curr_len++;
 
     // list length
+    curr_len = GRANT_MSG_NEIGHBOR_CNT_POS;
     buf[curr_len] = 0;
-    neighbor_count_pos = curr_len;
     curr_len++;
 
     // further we will iterate over our neighbor table and include
@@ -398,7 +399,7 @@ static void send_grant(uint8_t roundNumber, const linkaddr_t *to_addr) {
     struct drand_neighbor_state *neighbor = NULL;
     uint8_t neighbor_count = 0;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
-        if(!drand_compare_address(&neighbor->neighbor_addr, to_addr) && neighbor->has_timeslot) {
+        if(!drand_compare_address(&neighbor->neighbor_addr, to_addr) && neighbor->has_timeslot && neighbor->node_type == DIRECT_NEIGHBOR) {
             // include two high order bytes of address
             buf[curr_len] = neighbor->neighbor_addr.u8[0];
             curr_len++;
@@ -411,7 +412,8 @@ static void send_grant(uint8_t roundNumber, const linkaddr_t *to_addr) {
         }
     }
 
-    buf[neighbor_count_pos] = neighbor_count;
+    buf[GRANT_MSG_NEIGHBOR_CNT_POS] = neighbor_count;
+    printf("Put %u neighbors in grant message\n", neighbor_count);
 
     packetbuf_copyfrom(buf, curr_len);
     unicast_send(&unicast, to_addr);
@@ -443,7 +445,7 @@ static void drand_change_state(enum DRAND_STATE new_state) {
 static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr) {
     clock_time_t reception_time = clock_time();
     uint8_t neighbor_timeslot_amount; // byte 3 in neighbor message
-    uint8_t curr_len = 3;
+    uint8_t curr_len = GRANT_MSG_NEIGHBOR_CNT_POS; // start parsing from neighbor amount
 
     memcpy(&neighbor_timeslot_amount, packetbuf_dataptr() + curr_len, sizeof(uint8_t));
     curr_len++;
@@ -452,9 +454,9 @@ static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr) {
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
         if(drand_compare_address(&neighbor->neighbor_addr, from_addr)) {
-            if(neighbor->grant_or_reject_state = DRAND_RECEIVED_GRANT) {
+            if(neighbor->grant_or_reject_state == DRAND_RECEIVED_GRANT) {
                 unicast_release(roundNumber, from_addr);
-            } else if(neighbor->grant_or_reject_state = DRAND_RECEIVED_REJECT) {
+            } else if(neighbor->grant_or_reject_state == DRAND_RECEIVED_REJECT) {
                 // if we received a reject from the node we will transmit back a fail to it
                 unicast_fail(roundNumber, from_addr);
             }
@@ -465,6 +467,7 @@ static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr) {
         }
     }
 
+    printf("Grant contained %u timeslots\n", neighbor_timeslot_amount);
     for(uint8_t i = 0; i < neighbor_timeslot_amount; i++) {
         uint8_t neighbor_addr_high;
         uint8_t neighbor_addr_low;
@@ -520,7 +523,7 @@ static void handle_request(uint8_t roundNumber, const linkaddr_t *from_addr) {
 
 static void handle_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
     uint8_t other_timeslot;
-    memcpy(&other_timeslot, packetbuf_dataptr() + 3, sizeof(uint8_t));
+    memcpy(&other_timeslot, packetbuf_dataptr() + 2, sizeof(uint8_t));
 
     // update neighbor state from which we received release
     struct drand_neighbor_state *neighbor = NULL;
@@ -548,9 +551,9 @@ static void handle_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
 static void handle_two_hop_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
     uint8_t other_timeslot;
     uint8_t other_addr_high, other_addr_low;
-    memcpy(&other_timeslot, packetbuf_dataptr() + 3, sizeof(uint8_t));
-    memcpy(&other_addr_high, packetbuf_dataptr() + 4, sizeof(uint8_t));
-    memcpy(&other_addr_low, packetbuf_dataptr() + 5, sizeof(uint8_t));
+    memcpy(&other_timeslot, packetbuf_dataptr() + 2, sizeof(uint8_t));
+    memcpy(&other_addr_high, packetbuf_dataptr() + 3, sizeof(uint8_t));
+    memcpy(&other_addr_low, packetbuf_dataptr() + 4, sizeof(uint8_t));
 
     // search for entry in our table
     struct drand_neighbor_state *neighbor = NULL;
@@ -615,6 +618,7 @@ static void pick_timeslot() {
 
 
 static void broadcast_release(uint8_t roundNumber) {
+    printf("broadcasting release with timeslot %u\n", node_state.own_timeslot);
     // broadcast release message as well as chosen timeslot
     uint8_t buf[3];
     buf[0] = DRAND_MSG_RELEASE;
@@ -722,6 +726,8 @@ static void fail_release_timeout_callback(void*) {
 static void request_timeout_callback(void*) {
     printf("REQUEST TIMEOUT CALLBACK\n");
     resend_request(node_state.currentRound);
+    
+    ctimer_set(&request_timeout_timer, node_state.dA, request_timeout_callback, NULL);    
 }
 
 // I don't think we should do this but rather use the last_seen stats
