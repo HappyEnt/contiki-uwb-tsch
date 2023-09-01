@@ -102,7 +102,7 @@ struct drand_neighbor_state {
     linkaddr_t neighbor_addr;
     uint8_t has_timeslot, chosen_timeslot;
 
-    uint8_t grant_or_reject_state;
+    enum DRAND_GRANT_REJECT_STATE grant_or_reject_state;
 
     clock_time_t last_seen;
 };
@@ -158,8 +158,8 @@ static struct drand_node_state {
     .has_timeslot = 0,
     .own_timeslot = UINT8_MAX,
     // initialize dA, dB with some sensible defaults
-    .dA = CLOCK_SECOND / 10,
-    .dB = CLOCK_SECOND / 10,
+    .dA = CLOCK_SECOND / 4,
+    .dB = CLOCK_SECOND / 4,
 };
 
 
@@ -348,11 +348,10 @@ static void handle_reject(uint8_t roundNumber, const linkaddr_t *from_addr) {
         }
     }
 
-    if (roundNumber == node_state.currentRound) {
-        printf("sending fail \n");
+    /* if (roundNumber == node_state.currentRound) { */ // TODO we have to include round checks everywhere
         drand_change_state(DRAND_IDLE);
         broadcast_fail(roundNumber);
-    }
+    /* } */
 
     grant_reject_update_dA(reception_time);
 
@@ -360,6 +359,8 @@ static void handle_reject(uint8_t roundNumber, const linkaddr_t *from_addr) {
 }
 
 static void handle_fail(uint8_t roundNumber, const linkaddr_t *from) {
+    ctimer_stop(&fail_release_timeout_timer);
+    
     if (drand_compare_address(&node_state.grant_neighbor_addr, from)) {
         if(!node_state.has_timeslot) {
             drand_change_state(DRAND_IDLE);
@@ -367,7 +368,6 @@ static void handle_fail(uint8_t roundNumber, const linkaddr_t *from) {
             drand_change_state(DRAND_RELEASE);
         }
     }
-    ctimer_stop(&fail_release_timeout_timer);
 }
 
 static uint8_t toss_coin() {
@@ -418,7 +418,8 @@ static void send_grant(uint8_t roundNumber, const linkaddr_t *to_addr) {
     packetbuf_copyfrom(buf, curr_len);
     unicast_send(&unicast, to_addr);
 
-    ctimer_set(&fail_release_timeout_timer, node_state.dB, fail_release_timeout_callback, NULL);
+    /* ctimer_set(&fail_release_timeout_timer, node_state.dB, fail_release_timeout_callback, NULL); */
+    ctimer_set(&fail_release_timeout_timer, node_state.dA, fail_release_timeout_callback, NULL);     // TODO the algorithm does not specify how to calculate dB, maybe it just means dA from B's perspective?
 }
 
 static void grant_reject_update_dA(clock_time_t reception_time) {
@@ -525,6 +526,8 @@ static void handle_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
     uint8_t other_timeslot;
     memcpy(&other_timeslot, packetbuf_dataptr() + 2, sizeof(uint8_t));
 
+    ctimer_stop(&fail_release_timeout_timer);    
+
     // update neighbor state from which we received release
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
@@ -545,7 +548,6 @@ static void handle_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
     }
 
     broadcast_two_hop_release(roundNumber, other_timeslot, from_addr);
-    ctimer_stop(&fail_release_timeout_timer);
 }
 
 static void handle_two_hop_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
@@ -658,37 +660,30 @@ static void check_all_received() {
     printf("check_all_received\n");
     struct drand_neighbor_state *neighbor = NULL;
     uint8_t all_grant = 1;
+    uint8_t have_pending = 0;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
-        if(neighbor->node_type != DIRECT_NEIGHBOR) {
-            continue;
-        }
+        if(neighbor->node_type == DIRECT_NEIGHBOR) {
+            if(neighbor->grant_or_reject_state == DRAND_ANSWER_PENDING) {
+                have_pending = 1;
+                all_grant = 0;
+            }
 
-        if(neighbor->grant_or_reject_state == DRAND_ANSWER_PENDING) {
-            return;
-        }
-
-        if(neighbor->grant_or_reject_state == DRAND_RECEIVED_REJECT) {
-            all_grant = 0;
+            if(neighbor->grant_or_reject_state == DRAND_RECEIVED_REJECT) {
+                all_grant = 0;
+            }
         }
     }
 
     // if we received all messages we will unset the request_timeout_timer
-    ctimer_stop(&request_timeout_timer);
-
+    if(!have_pending) {
+        ctimer_stop(&request_timeout_timer);
+    }
 
     if(all_grant) {
         pick_timeslot();
         drand_change_state(DRAND_RELEASE);
         broadcast_release(node_state.currentRound);
     }
-}
-
-
-static void send_two_hop_release() {
-}
-
-static void drand_rime_send(void) {
-  uint32_t id;
 }
 
 void drand_init(uint8_t max_slotframe_length) {
@@ -713,7 +708,9 @@ static void neighbors_set_response_pending() {
     // iterate over all neighbors and set that wait for a grant/reject
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
-        neighbor->grant_or_reject_state = DRAND_ANSWER_PENDING;
+        if(neighbor->node_type == DIRECT_NEIGHBOR) {
+            neighbor->grant_or_reject_state = DRAND_ANSWER_PENDING;
+        }
     }
 }
 
@@ -773,7 +770,7 @@ static void print_drand_status() {
 
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
-        printf("Neighbor %u.%u: ", neighbor->neighbor_addr.u8[0], neighbor->neighbor_addr.u8[1]);
+        printf("Neighbor %u.%u, Status: ", neighbor->neighbor_addr.u8[0], neighbor->neighbor_addr.u8[1]);
         switch(neighbor->grant_or_reject_state) {
             case DRAND_ANSWER_PENDING:
                 printf("Pending");
@@ -788,11 +785,25 @@ static void print_drand_status() {
                 printf("Unknown state");
                 break;
         }
-        
-        if(neighbor->has_timeslot) {
-            printf(" timeslot: %u\n", neighbor->chosen_timeslot);
+
+        // print TWO hop type
+        printf(", Hops: ");
+        switch(neighbor->node_type) {
+            case DIRECT_NEIGHBOR:
+                printf("1");
+                break;
+        case TWO_HOP_NEIGHBOR:
+                printf("2");
+                break;
+         default:
+                printf("?");
+                break;
         }
         
+        if(neighbor->has_timeslot) {
+            printf(", Slot: %u\n", neighbor->chosen_timeslot);
+        }
+
         printf("\n");
     }
     
@@ -822,7 +833,7 @@ PROCESS_THREAD(drand_process, ev, data)
           drand_change_state(DRAND_IDLE);
 
           etimer_stop(&neighbor_discovery_phase_timer); // is this enough to prevent multiple triggers?
-          neighbor_discovery_close(&neighbor_discovery);
+          /* neighbor_discovery_close(&neighbor_discovery); */
           drand_running = 1;
       } else if(etimer_expired(&drand_phase_timer) && drand_running) {
           print_drand_status();
@@ -830,15 +841,13 @@ PROCESS_THREAD(drand_process, ev, data)
           if(node_state.drand_state == DRAND_IDLE && try_lottery()  && !node_state.has_timeslot) {
               printf("Node %u.%u won the lottery\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
               drand_change_state(DRAND_REQUEST);
-
-              broadcast_request(node_state.drand_state);
-
               neighbors_set_response_pending();
-
-              // start timer based on the value of node_state.dA
-              ctimer_set(&request_timeout_timer, node_state.dA, request_timeout_callback, NULL);
-
+              
+              broadcast_request(node_state.drand_state);
+              
+              // start timer based on the value of node_state.dA              
               node_state.last_request_time = clock_time();
+              ctimer_set(&request_timeout_timer, node_state.dA, request_timeout_callback, NULL);
           } else {
               drand_change_state(DRAND_IDLE);
           }
