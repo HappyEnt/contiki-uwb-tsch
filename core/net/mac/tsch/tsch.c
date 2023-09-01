@@ -304,7 +304,7 @@ eb_input(struct input_packet *current_input)
       while(stat != NULL) {
         /* Is neighbor eligible as a time source? */
         if(stat->rx_count > best_neighbor_eb_count / 2) {
-          if(best_stat == NULL ||
+            if(best_stat == NULL ||
              stat->jp < best_stat->jp) {
             best_stat = stat;
           }
@@ -1040,6 +1040,7 @@ turn_on(void)
   }
   return 0;
 }
+
 /*---------------------------------------------------------------------------*/
 static int
 turn_off(int keep_radio_on)

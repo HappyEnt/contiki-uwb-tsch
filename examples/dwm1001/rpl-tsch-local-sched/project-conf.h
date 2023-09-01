@@ -51,7 +51,9 @@
 /*******************************************************/
 /********* Enable RPL non-storing mode *****************/
 /*******************************************************/
+#define LOC_WITH_RPL 0
 
+#if LOC_WITH_RPL
 #undef UIP_CONF_MAX_ROUTES
 #define UIP_CONF_MAX_ROUTES 0 /* No need for routes */
 /* #define UIP_CONF_MAX_ROUTES 5 /\* only needed in rpl storing mode *\/ */
@@ -59,6 +61,7 @@
 #define RPL_CONF_MOP RPL_MOP_NON_STORING /* Mode of operation*/
 #undef ORCHESTRA_CONF_RULES
 #define ORCHESTRA_CONF_RULES { &eb_per_time_source, &unicast_per_neighbor_rpl_ns, &default_common } /* Orchestra in non-storing */
+#endif
 
 /*******************************************************/
 /********************* Enable TSCH *********************/
@@ -77,12 +80,17 @@
 #define FRAME802154_CONF_VERSION FRAME802154_IEEE802154E_2012
 
 /* TSCH and RPL callbacks */
+#if LOC_WITH_RPL
 #define RPL_CALLBACK_PARENT_SWITCH tsch_rpl_callback_parent_switch
 #define RPL_CALLBACK_NEW_DIO_INTERVAL tsch_rpl_callback_new_dio_interval
 #define TSCH_CALLBACK_JOINING_NETWORK tsch_rpl_callback_joining_network
 #define TSCH_CALLBACK_LEAVING_NETWORK tsch_rpl_callback_leaving_network
-#define TSCH_SCHEDULE_CONF_MAX_LINKS 257 // sadly we need a lot of links
-
+#else
+// either we let tsch automatically choose a time source or we use rpls time source selection
+// Note that the former should probably not be done in heavy multihop networks
+#define TSCH_CONF_AUTOSELECT_TIME_SOURCE 1
+#endif
+#define TSCH_SCHEDULE_CONF_MAX_LINKS 32
 
 /* Needed for CC2538 platforms only */
 /* For TSCH we have to use the more accurate crystal oscillator
@@ -183,43 +191,6 @@
 
 #endif
 
-
-
-#if CONTIKI_TARGET_Z1
-/* Save some space to fit the limited RAM of the z1 */
-#undef UIP_CONF_TCP
-#define UIP_CONF_TCP 0
-#undef QUEUEBUF_CONF_NUM
-#define QUEUEBUF_CONF_NUM 3
-#undef RPL_NS_CONF_LINK_NUM
-#define RPL_NS_CONF_LINK_NUM  8
-#undef NBR_TABLE_CONF_MAX_NEIGHBORS
-#define NBR_TABLE_CONF_MAX_NEIGHBORS 8
-#undef UIP_CONF_ND6_SEND_NS
-#define UIP_CONF_ND6_SEND_NS 0
-#undef SICSLOWPAN_CONF_FRAG
-#define SICSLOWPAN_CONF_FRAG 0
-
-#if WITH_SECURITY
-/* Note: on sky or z1 in cooja, crypto operations are done in S/W and
- * cannot be accommodated in normal slots. Use 65ms slots instead, and
- * a very short 6TiSCH minimal schedule length */
-#undef TSCH_CONF_DEFAULT_TIMESLOT_LENGTH
-#define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH 65000
-#undef TSCH_SCHEDULE_CONF_DEFAULT_LENGTH
-#define TSCH_SCHEDULE_CONF_DEFAULT_LENGTH 2
-/* Reduce log level to make space for security on z1 */
-#undef TSCH_LOG_CONF_LEVEL
-#define TSCH_LOG_CONF_LEVEL 0
-#endif /* WITH_SECURITY */
-
-#endif /* CONTIKI_TARGET_Z1 */
-
-#if CONTIKI_TARGET_CC2538DK || CONTIKI_TARGET_ZOUL || \
-  CONTIKI_TARGET_OPENMOTE_CC2538
-#define TSCH_CONF_HW_FRAME_FILTERING    0
-#endif /* CONTIKI_TARGET_CC2538DK || CONTIKI_TARGET_ZOUL \
-       || CONTIKI_TARGET_OPENMOTE_CC2538 */
 
 #if CONTIKI_TARGET_COOJA
 #define COOJA_CONF_SIMULATE_TURNAROUND 0

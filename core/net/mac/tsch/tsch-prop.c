@@ -122,7 +122,9 @@ enum mtm_node_role {
     MTM_ANCHOR // an anchor is a active participant that never loses its slot 
 };
 
-#define MAX_MISSED_OBSERVATIONS 5 // after not observing a neighbor for 5 rounds we will consider him a goner
+#define MAX_MISSED_OBSERVATIONS 20 // after not observing a neighbor for 5 rounds we will consider him a goner
+#define MTM_RANGING_SLOTS 3 // restricts the maximum degree that any node in the graph might have
+#define MTM_MAX_DIRECT 2
 
 struct mtm_neighbor {
     struct mtm_neighbor *next;
@@ -133,6 +135,7 @@ struct mtm_neighbor {
     struct distance_measurement last_measurement;
 
     enum mtm_neighbor_type type;
+    enum mtm_node_role neighbor_role;
 
     uint8_t missed_observations, observed_this_round, timeslot_offset;
 };
@@ -165,6 +168,7 @@ LIST(pas_tdoa_list);
 MEMB(mtm_prop_neighbor_memb, struct mtm_neighbor, TSCH_MTM_PROP_MAX_MEASUREMENT);
 MEMB(mtm_prop_rx_memb, struct mtm_rx_queue_item, TSCH_MTM_PROP_MAX_NEIGHBORS);
 MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MTM_PROP_MAX_NEIGHBORS);
+
 
 
 // this will be used to return a array of timestamps that we read from the user
@@ -245,7 +249,8 @@ void print_mtm_neighbors() {
 
 
 void mtm_scheduling_decision() {
-    uint8_t occupied_timeslots[7] = {0x00};
+    uint8_t occupied_timeslots[MTM_RANGING_SLOTS+1] = {0x00};
+    uint8_t directCount = 0, indirectCount = 0; // counters for direct and indirect taken slots
 
     //iterate over links an mark all links that are not of type MTM_PROP as unavailable
     
@@ -260,17 +265,12 @@ void mtm_scheduling_decision() {
     }
 
     /* occupied_timeslots[0] = 1; */
-    printf("scheduling_decision, current Role: %d, with slot: %d\n", mtm_current_node_role, mtm_active_our_timeslot);
+    /* printf("scheduling_decision, current Role: %d, with slot: %d\n", mtm_current_node_role, mtm_active_our_timeslot); */
     
     // iterate over neighbor table
     struct mtm_neighbor *n = NULL;
     for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
         // if we have a two hop neighbor and we have a direct/indirect neighbor and we didn't observe it for some time we remove it
-
-        if(!n->observed_this_round) {
-            n->missed_observations++;
-        }
-        
         if (n->missed_observations >= MAX_MISSED_OBSERVATIONS) {
             // remove from list
             list_remove(ranging_neighbor_list, n);
@@ -279,6 +279,11 @@ void mtm_scheduling_decision() {
         } else {
             // entry still valid, mark timeslot as occupied
             occupied_timeslots[n->timeslot_offset] = 1;
+            if(n->type == MTM_DIRECT_NEIGHBOR) {
+                directCount++;
+            } else {
+                indirectCount++;
+            }
         }
     }
 
@@ -287,11 +292,17 @@ void mtm_scheduling_decision() {
         return;
     }
 
+    // otherwise check whether we are eligible to take a slot
+    if(directCount > MTM_MAX_DIRECT) {
+        return;
+    }
+    
+
     // if there is a free timeslot we will take it greedily
     printf("mtm_scheduling_decision: checking for free timeslots\n");
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < MTM_RANGING_SLOTS+1; i++) {
         if (!occupied_timeslots[i]) {
-            mtm_active_our_timeslot = i; // we have to skip the first slot
+            mtm_active_our_timeslot = i;
             mtm_current_node_role = MTM_ACTIVE;            
             mtm_active_missed_observations = 0;
             // we found a free timeslot, lets create a tx link here for ourselves
@@ -357,24 +368,20 @@ void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
 }
 
 void mtm_update_schedule() {
-    print_mtm_neighbors();    
     mtm_scheduling_decision();
 
-    if (mtm_current_node_role == MTM_ACTIVE && mtm_active_missed_observations > 50) {
+    if (mtm_current_node_role == MTM_ACTIVE && mtm_active_missed_observations >= MAX_MISSED_OBSERVATIONS) {
         mtm_current_node_role = MTM_PASSIVE;
         mtm_active_missed_observations = 0;
         printf("resetting\n");
 
         // install rx link again
-        tsch_get_lock();
         struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);            
 
         if(sf_eb != NULL) {
             struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, mtm_active_our_timeslot);
             l->link_options = LINK_OPTION_RX;
         }
-
-        tsch_release_lock();
     }
 }
 
@@ -385,13 +392,23 @@ void mtm_end_of_round() {
         if (!n->observed_this_round) {
             n->missed_observations++;
         }
+        n->observed_this_round = 0;
     }
 }
 
+
+void mtm_handle_slot_end(uint8_t timeslot_offset) {
+    if (timeslot_offset == MTM_RANGING_SLOTS) {
+        mtm_end_of_round();
+    }
+}
+
+void mtm_set_node_anchor(uint8_t enable) {
+    mtm_current_node_role = enable ? MTM_ANCHOR : MTM_PASSIVE;
+}
+
 void mtm_init(uint8_t is_coordinator) {
-  uint16_t timeslot_amount = 7;
-  
-  struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, timeslot_amount);
+  struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, MTM_RANGING_SLOTS + 1);
   tsch_schedule_add_link(
           sf_eb,
           LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
@@ -400,8 +417,6 @@ void mtm_init(uint8_t is_coordinator) {
           0,
           0);
     // if our node_role is role_6dr we will take the first TX slot
-
-
 
     tsch_schedule_add_link(
             sf_eb,
@@ -413,7 +428,7 @@ void mtm_init(uint8_t is_coordinator) {
         );
 
     // initialize all other links as RX PROP MTM
-    for(int i = 2; i < timeslot_amount; i++) {
+    for(int i = 2; i < MTM_RANGING_SLOTS+1; i++) {
             tsch_schedule_add_link(
                 sf_eb,
                 LINK_OPTION_RX,
@@ -692,7 +707,7 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
     // first check whether neighbor has a valid entry in our list and none of the timestamps are uninitialized, i.e., of value UINT64_MAX;
 
     if (mtm_n == NULL) {
-        _PRINTF("MTM: Neighbor not found in list\n");
+        printf("MTM: Neighbor not found in list\n");
         return;
     }
 
@@ -723,7 +738,7 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
     // bias correction in centimeters
     /* bias_correction = dw1000_getrangebias(n->last_prop_time.tsch_channel, range); */
     _PRINTF("bias uncorrected range to %u: " NRF_LOG_FLOAT_MARKER "\n", mtm_n->neighbor_addr, NRF_LOG_FLOAT(range));
-    _PRINTF("prop time to %u: %d\n", mtm_n->neighbor_addr.u8[LINKADDR_SIZE-1], prop_time);
+    _PRINTF("prop time to %u: %d\n", mtm_n->neighbor_addr, prop_time);
     // call into existing methods for passing data to user
 
     // TODO Added for debugging remove again
@@ -795,6 +810,10 @@ int tsch_packet_create_multiranging_packet(
   /* memcpy(&buf[curr_len], candidate_bitmask, sizeof(candidate_bitmask)); */
   /* curr_len = curr_len + sizeof(candidate_bitmask); */
 
+  // add our own node type
+  /* memcpy(&buf[curr_len], &mtm_current_node_role, sizeof(enum mtm_node_role)); */
+  /* curr_len = curr_len + sizeof(enum mtm_node_role); */
+
   // add tx_timestamp
   memcpy(&buf[curr_len], &tx_timestamp, sizeof(uint64_t));
   curr_len = curr_len + sizeof(uint64_t);
@@ -828,7 +847,7 @@ int tsch_packet_create_multiranging_packet(
 }
 
 int
-tsch_packet_parse_multiranging_packet(
+tsch_packet_parse_multiranging_packet (
     uint8_t *buf,
     int buf_size,
     uint8_t timeslot_offset,
@@ -1055,24 +1074,25 @@ update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time,
 }
 
 
-/* float calculate_propagation_time_alternative(struct ds_twr_ts *ts) { */
+/* int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) { */
 /*     static float relative_drift_offset; */
 /*     static uint64_t other_duration, own_duration; */
 /*     static uint64_t round_duration_b, delay_duration_a; */
 /*     static int64_t drift_offset_int, two_tof_int; */
 
-/*     other_duration = ts->txB2 - ts->txB1; */
-/*     own_duration = ts->rxA2 - ts->rxA1; */
+/*     other_duration = interval_correct_overflow(ts->t_b2, ts->t_b1); */
+/*     own_duration   = interval_correct_overflow(ts->r_a2, ts->r_a1); */
 
 /*     relative_drift_offset = (float) ((int64_t)own_duration - (int64_t) other_duration) / (float) other_duration; */
 
-/*     round_duration_b = ts->rxB1 - ts->txB1; */
-/*     delay_duration_a = ts->txA1 - ts->rxA1; */
+/*     round_duration_b = interval_correct_overflow( ts->t_b1, ts->r_b1); */
+/*     delay_duration_a = interval_correct_overflow(ts->t_a1, ts->r_a1); */
 
 /*     drift_offset_int = relative_drift_offset * (float) round_duration_b - relative_drift_offset * (float) delay_duration_a; */
 /*     two_tof_int = (int64_t)round_duration_b - (int64_t)delay_duration_a + drift_offset_int; */
 
-/*     return ((float)two_tof_int) * 0.5; */
+/*     /\* return ((float)two_tof_int) * 0.5; *\/ */
+/*     return (two_tof_int / 2); */
 /* } */
 
 int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) {

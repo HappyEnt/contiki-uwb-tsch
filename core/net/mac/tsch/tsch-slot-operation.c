@@ -1723,6 +1723,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
     if(mac_tx_status != MAC_TX_OK){
       _PRINTF("TX localisation error at step %u ASN %u %u channel %u\n", step, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
     }
+    
     tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
 
     uint16_t rx_timeout_us;
@@ -1730,10 +1731,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
     NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
   }
 
-  if(current_link->timeslot == 6) {
-      /* mtm_end_of_round(); */
-  }      
-
+  mtm_handle_slot_end(current_link->timeslot);
 
   TSCH_DEBUG_TX_EVENT();
   // printf("tsch_tx_prop_slot\n");
@@ -2253,7 +2251,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
           frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
 
-          printf("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]);
+          /* printf("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]); */
 
       
           num_rx_timestamps = 0;
@@ -2269,6 +2267,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
               printf("mtm parse failed\n");
           }
 
+
       
           _PRINTF("--------------Finished----------------\n");
 
@@ -2280,9 +2279,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   }
 
   // if this is the last ranging timeslot execute end of round handler
-  if(current_link->timeslot == 6) {
-      /* mtm_end_of_round(); */
-  }
+  mtm_handle_slot_end(current_link->timeslot);
 
   #if TSCH_SLEEP
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);

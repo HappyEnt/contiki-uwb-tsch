@@ -174,8 +174,16 @@
     #error "TSCH: Unsupported UWB Data rate."
   #endif /* DW1000_CONF_DATA_RATE */
 
-
-  #if TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 5000
+  // the shorter slot size of mtm allows us to perform ultra short timeslots
+  #if TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 1500
+     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    1500
+  #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 2500
+     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    2500
+  #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 3000
+     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    3000
+  #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 4000
+     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    4000
+  #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 5000
     /* UWB_T_SHR = (Preamble lenght + 16) at 6.8 mbps */
     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    5000
   #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 7500

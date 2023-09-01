@@ -63,6 +63,8 @@ enum measurement_type {
     TWR
 };
 
+
+
 struct distance_measurement {
     enum measurement_type type;
 
@@ -97,11 +99,10 @@ void add_mtm_reception_timestamp(
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
 void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset);
-void mtm_print_candidates();
 void mtm_init(uint8_t is_coordinator);
-void mtm_take_slots_schedule();
-void mtm_end_of_round();
+void mtm_handle_slot_end(uint8_t timeslot_offset);
 void mtm_update_schedule();
+void mtm_set_node_anchor(uint8_t enable);
 
 // requires passing of the asn. Currently not used, but could in future be used when the duration
 // between measurements increases. This would allow us to give a measurement of how outdated or bad
