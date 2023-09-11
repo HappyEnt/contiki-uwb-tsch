@@ -63,8 +63,6 @@ enum measurement_type {
     TWR
 };
 
-
-
 struct distance_measurement {
     enum measurement_type type;
 
@@ -81,6 +79,32 @@ struct distance_measurement {
     int32_t time;
 };
 
+// make public for now, should probably later be replaced with a better interface
+struct ds_twr_ts
+{
+    uint64_t t_a1, r_b1, t_b1, r_a1, t_a2, r_b2, t_b2, r_a2;
+};
+
+enum mtm_neighbor_type  {
+    MTM_DIRECT_NEIGHBOR,
+    MTM_TWO_HOP_NEIGHBOR,
+};
+
+struct mtm_neighbor {
+    struct mtm_neighbor *next;
+
+    ranging_addr_t neighbor_addr;
+    struct ds_twr_ts ts;
+    
+    struct distance_measurement last_measurement;
+
+    enum mtm_neighbor_type type;
+
+    clock_time_t last_observed;
+    uint8_t observed_timeslot; // the timeslot we learned that the node sends in
+    uint64_t total_found_ours_counter; // counter which tracks how often in total we found our timestamp
+};
+
 struct mtm_packet_timestamp {
     ranging_addr_t addr;
     uint64_t rx_timestamp;
@@ -89,20 +113,21 @@ struct mtm_packet_timestamp {
 void add_mtm_reception_timestamp(
     ranging_addr_t neighbor_addr,
     struct tsch_asn_t *asn,
-
+    uint8_t timeslot,
+    
     uint64_t rx_timestamp_A,    
     uint64_t tx_timestamp_B,
     
     struct mtm_packet_timestamp *rx_timestamps,
     uint8_t num_rx_timestamps
-    );
+);
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
 void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset);
-void mtm_init(uint8_t is_coordinator);
+void mtm_init();
 void mtm_handle_slot_end(uint8_t timeslot_offset);
-void mtm_update_schedule();
-void mtm_set_node_anchor(uint8_t enable);
+void set_mtm_tx_slot(uint8_t timeslot);
+list_t tsch_prop_get_neighbor_list();
 
 // requires passing of the asn. Currently not used, but could in future be used when the duration
 // between measurements increases. This would allow us to give a measurement of how outdated or bad

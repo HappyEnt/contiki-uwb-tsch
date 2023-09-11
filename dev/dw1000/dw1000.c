@@ -1301,6 +1301,10 @@ void dw_set_manual_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
     Control (Smart Transmit Power Control disabled) */
   sys_cfg_val |= DW_DIS_STXP_MASK;  /* Disable Smart Transmit Power Control */
 
+  #if UWB_TX_REDUCED_RANGE
+  // we set no gain here for all channels
+  tx_power_val = 0x75606075ul;
+  #else
   switch(channel) {
   case DW_CHANNEL_1:
     if(prf == DW_PRF_16_MHZ) {
@@ -1345,6 +1349,7 @@ void dw_set_manual_tx_power(dw1000_channel_t channel, dw1000_prf_t prf){
     }
     break;
   }
+  #endif
 
   dw_write_reg(DW_REG_SYS_CFG, DW_LEN_SYS_CFG, (uint8_t *) &sys_cfg_val);
   dw_write_reg(DW_REG_TX_POWER, DW_LEN_TX_POWER, (uint8_t *) &tx_power_val);

@@ -35,6 +35,7 @@
  * \author El Pato
  */
 
+#include "apps/mqtt/mqtt.h"
 #include "contiki.h"
 #include "drand.h"
 #include "linkaddr.h"
@@ -51,13 +52,23 @@
 #define DEBUG DEBUG_PRINT
 #include "net/ip/uip-debug.h"
 
+/* #define DEBUG_DRAND_UART 1 */
+/* #if DEBUG_DRAND_UART */
+/* #include "dbg-io/dbg.h" */
+/* #undef PRINTF */
+/* #define PRINTF(...) do { char buf[128]; sprintf(buf, __VA_ARGS__); dbg_send_bytes(buf, strlen(buf)); } while(0) */
+/* #else */
+#define PRINTF(...) printf(__VA_ARGS__)
+/* #endif */
+
+
 #include "lib/random.h"
 #include "lib/list.h"
 
 PROCESS(drand_process, "DRAND");
 /* AUTOSTART_PROCESSES(&drand_process); */
 
-#define DRAND_MAX_NEIGHBORS 10
+#define DRAND_MAX_NEIGHBORS 40
 
 
 static struct etimer drand_phase_timer;
@@ -112,10 +123,13 @@ static void handle_request(uint8_t roundNumber, const linkaddr_t *from_addr);
 static void handle_release(uint8_t roundNumber, const linkaddr_t *from_addr);
 static void handle_reject(uint8_t roundNumber, const linkaddr_t *from_addr);
 static void broadcast_fail(uint8_t roundNumber);
+static void broadcast_release(uint8_t roundNumber);
 static void unicast_fail(uint8_t roundNumber, const linkaddr_t *to_addr);
-static void handle_fail(uint8_t roundNumber, const linkaddr_t *from);
+static void handle_fail(uint8_t roundNumber, const linkaddr_t *from_addr);
 static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr);
-static void check_all_received();
+static uint8_t check_all_grant();
+static uint8_t check_pending();
+static void pick_timeslot();
 static void broadcast_two_hop_release(uint8_t roundNumber, uint8_t timeslot, const linkaddr_t *node_addr);
 static void unicast_release(uint8_t roundNumber, const linkaddr_t *node_addr);
 static uint8_t toss_coin();
@@ -145,7 +159,10 @@ static struct drand_node_state {
 
     uint8_t own_timeslot, has_timeslot;
 
-    clock_time_t TA, dA, dB, last_grant_or_reject_time, last_request_time;
+    clock_time_t TA, dA, last_grant_or_reject_time, last_request_time, last_lottery_time;
+
+    // timeslot callback function
+    void (*timeslot_callback)(uint8_t timeslot);
 
     // information that we keep upon receiving a request from a neighbor
     linkaddr_t grant_neighbor_addr; // address which caused us to go into GRANT state
@@ -158,10 +175,14 @@ static struct drand_node_state {
     .has_timeslot = 0,
     .own_timeslot = UINT8_MAX,
     // initialize dA, dB with some sensible defaults
-    .dA = CLOCK_SECOND / 4,
-    .dB = CLOCK_SECOND / 4,
+    .dA = CLOCK_SECOND,
+    .TA = 3 * CLOCK_SECOND
 };
 
+
+void drand_set_timeslot_callback(void (*cb)(uint8_t timeslot)) {
+    node_state.timeslot_callback = cb;
+}
 
 void drand_print_neighbor_table() {
     printf("drand neighbor table:\n");
@@ -216,13 +237,13 @@ static void recvd_message(const linkaddr_t *from) {
     switch(msg_type) {
     case DRAND_MSG_REQUEST:
         handle_request(roundNumber, from);
-            break;
+        break;
     case DRAND_MSG_GRANT:
         handle_grant(roundNumber, from);
-            break;
+        break;
     case DRAND_MSG_FAIL:
         handle_fail(roundNumber, from);
-            break;
+        break;
     case DRAND_MSG_REJECT:
         handle_reject(roundNumber, from);
         break;
@@ -287,6 +308,7 @@ static void discovery_sent(struct neighbor_discovery_conn *c) {
 static const struct neighbor_discovery_callbacks neighbor_discovery_calls = { .recv = discovery_recv, .sent = discovery_sent };
 
 static void broadcast_request(uint8_t roundNumber) {
+    printf("broadcasting request for round %d\n", roundNumber);
     uint8_t buf[2];
     buf[0] = DRAND_MSG_REQUEST;
     buf[1] = roundNumber;
@@ -295,6 +317,7 @@ static void broadcast_request(uint8_t roundNumber) {
 }
 
 static void unicast_request(uint8_t roundNumber, const linkaddr_t *to_addr) {
+    printf("unicasting request for round %d to %d.%d\n", roundNumber, to_addr->u8[0], to_addr->u8[1]);
     uint8_t buf[2];
     buf[0] = DRAND_MSG_REQUEST;
     buf[1] = roundNumber;
@@ -306,13 +329,14 @@ static void resend_request(uint8_t roundNumber) {
     // go over list of neighbors, and if we did not yet receive a grant or reject, resend the request message
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
-        if(neighbor->grant_or_reject_state == DRAND_ANSWER_PENDING && neighbor->node_type == DIRECT_NEIGHBOR) {
+        if(neighbor->grant_or_reject_state != DRAND_RECEIVED_GRANT && neighbor->node_type == DIRECT_NEIGHBOR) {
             unicast_request(roundNumber, &neighbor->neighbor_addr);
         }
     }
 }
 
 static void send_reject(uint8_t roundNumber, const linkaddr_t *to_addr) {
+    printf("unicasting reject for round %d to %d.%d\n", roundNumber, to_addr->u8[0], to_addr->u8[1]);
     uint8_t buf[2];
     buf[0] = DRAND_MSG_REJECT;
     buf[1] = roundNumber;
@@ -321,6 +345,7 @@ static void send_reject(uint8_t roundNumber, const linkaddr_t *to_addr) {
 }
 
 static void broadcast_fail(uint8_t roundNumber) {
+    printf("broadcasting fail for round %d\n", roundNumber);
     uint8_t buf[2];
     buf[0] = DRAND_MSG_FAIL;
     buf[1] = roundNumber;
@@ -329,6 +354,7 @@ static void broadcast_fail(uint8_t roundNumber) {
 }
 
 static void unicast_fail(uint8_t roundNumber, const linkaddr_t *to_addr) {
+    printf("unicasting fail for round %d to %d.%d\n", roundNumber, to_addr->u8[0], to_addr->u8[1]);
     uint8_t buf[2];
     buf[0] = DRAND_MSG_FAIL;
     buf[1] = roundNumber;
@@ -340,6 +366,19 @@ static void handle_reject(uint8_t roundNumber, const linkaddr_t *from_addr) {
     clock_time_t reception_time = clock_time();
     // search through neighbor list and update state
     struct drand_neighbor_state *neighbor = NULL;
+
+    if(node_state.drand_state != DRAND_REQUEST) {
+        printf("received reject but we are not in REQUEST\n");
+        return;
+    }
+
+    if(roundNumber != node_state.currentRound) {
+        printf("received reject for round %d, but we are in round %d\n", roundNumber, node_state.currentRound);
+        return;
+    }
+
+    ctimer_stop(&request_timeout_timer);        
+
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
         if(drand_compare_address(&neighbor->neighbor_addr, from_addr)) {
             neighbor->grant_or_reject_state = DRAND_RECEIVED_REJECT;
@@ -348,25 +387,30 @@ static void handle_reject(uint8_t roundNumber, const linkaddr_t *from_addr) {
         }
     }
 
-    /* if (roundNumber == node_state.currentRound) { */ // TODO we have to include round checks everywhere
-        drand_change_state(DRAND_IDLE);
-        broadcast_fail(roundNumber);
-    /* } */
+    drand_change_state(DRAND_IDLE);
+    broadcast_fail(roundNumber);
 
     grant_reject_update_dA(reception_time);
-
-    check_all_received();
 }
 
-static void handle_fail(uint8_t roundNumber, const linkaddr_t *from) {
+static void handle_fail(uint8_t roundNumber, const linkaddr_t *from_addr) {
+
+    if(node_state.drand_state != DRAND_GRANT) {
+        printf("received fail but we are not in GRANT\n");
+        return;
+    }
+    
+    if (!drand_compare_address(&node_state.grant_neighbor_addr, from_addr) || !(roundNumber == node_state.grant_neighbor_round)) {
+        printf("received fail from neighbor we did not grant to\n");
+        return;
+    }
+    
     ctimer_stop(&fail_release_timeout_timer);
     
-    if (drand_compare_address(&node_state.grant_neighbor_addr, from)) {
-        if(!node_state.has_timeslot) {
-            drand_change_state(DRAND_IDLE);
-        } else {
-            drand_change_state(DRAND_RELEASE);
-        }
+    if(!node_state.has_timeslot) {
+        drand_change_state(DRAND_IDLE);
+    } else {
+        drand_change_state(DRAND_RELEASE);
     }
 }
 
@@ -374,9 +418,42 @@ static uint8_t toss_coin() {
     return (random_rand()) > (RANDOM_RAND_MAX/2);
 }
 
+
+// returns the number of neighbors that have not yet decided on a timeslot
+static uint8_t undecided_number_of_neighbors() {
+    uint8_t neighbor_counter = 0;
+    for(struct drand_neighbor_state *neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
+        if(neighbor->has_timeslot == 0) {
+            neighbor_counter++;
+        }
+    }
+    return neighbor_counter;
+}
+
+
+// upon successfull coin toss, a node will try the lottery
 static uint8_t try_lottery() {
-    // coin toss
-    return toss_coin(); // the lottery in the algorithm is a little more complicated, but I don't understand what they mean at all ...
+    clock_time_t curr_lottery_time = clock_time();
+    if((node_state.last_lottery_time - curr_lottery_time) < node_state.TA) {
+        return 0;
+    }
+
+    node_state.last_lottery_time = curr_lottery_time;
+    
+    // every new try of the lottery will increase the round counter
+    node_state.currentRound++;
+
+    printf("increasing round counter to %d\n", node_state.currentRound);
+    
+    // the probability of winning is equal to 1 / the number of undecided neighbors
+    uint8_t neighbors = undecided_number_of_neighbors();
+    uint16_t rand = random_rand();
+    
+    if(!neighbors) {
+        return 1;
+    }
+    
+    return (rand < (RANDOM_RAND_MAX / neighbors));
 }
 
 #define GRANT_MSG_NEIGHBOR_CNT_POS 2
@@ -388,7 +465,7 @@ static void send_grant(uint8_t roundNumber, const linkaddr_t *to_addr) {
     curr_len++;
     buf[curr_len] = roundNumber;
     curr_len++;
-
+    
     // list length
     curr_len = GRANT_MSG_NEIGHBOR_CNT_POS;
     buf[curr_len] = 0;
@@ -407,27 +484,25 @@ static void send_grant(uint8_t roundNumber, const linkaddr_t *to_addr) {
             curr_len++;
             buf[curr_len] = neighbor->chosen_timeslot;
             curr_len++;
-
             neighbor_count++;
         }
     }
 
     buf[GRANT_MSG_NEIGHBOR_CNT_POS] = neighbor_count;
-    printf("Put %u neighbors in grant message\n", neighbor_count);
 
     packetbuf_copyfrom(buf, curr_len);
     unicast_send(&unicast, to_addr);
 
-    /* ctimer_set(&fail_release_timeout_timer, node_state.dB, fail_release_timeout_callback, NULL); */
-    ctimer_set(&fail_release_timeout_timer, node_state.dA, fail_release_timeout_callback, NULL);     // TODO the algorithm does not specify how to calculate dB, maybe it just means dA from B's perspective?
+    printf("sending grant(%u) to %u.%u\n", roundNumber, to_addr->u8[0], to_addr->u8[1]);
 }
 
 static void grant_reject_update_dA(clock_time_t reception_time) {
-    node_state.last_grant_or_reject_time = clock_time();
+    node_state.last_grant_or_reject_time = reception_time;
     clock_time_t time_diff = node_state.last_grant_or_reject_time - node_state.last_request_time;
 
     if(time_diff > node_state.dA) {
         node_state.dA = time_diff;
+        node_state.TA = 3*node_state.dA;
     }
 
     printf("new dA: %lu\n", node_state.dA);
@@ -451,15 +526,22 @@ static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr) {
     memcpy(&neighbor_timeslot_amount, packetbuf_dataptr() + curr_len, sizeof(uint8_t));
     curr_len++;
 
+    // in this case previously we previosyly failed through a reject, so we should always answer
+    // by uicasting back a fail
+    if(node_state.drand_state == DRAND_IDLE || node_state.drand_state == DRAND_GRANT) {
+        unicast_fail(roundNumber, from_addr);
+    }
+
     // update neighbor state from which we received grant
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
         if(drand_compare_address(&neighbor->neighbor_addr, from_addr)) {
-            if(neighbor->grant_or_reject_state == DRAND_RECEIVED_GRANT) {
+            if(neighbor->grant_or_reject_state == DRAND_RECEIVED_GRANT && node_state.has_timeslot) { // TODO Should we only release if we got grant from everybody else?
                 unicast_release(roundNumber, from_addr);
-            } else if(neighbor->grant_or_reject_state == DRAND_RECEIVED_REJECT) {
-                // if we received a reject from the node we will transmit back a fail to it
-                unicast_fail(roundNumber, from_addr);
+            /* } else if(neighbor->grant_or_reject_state == DRAND_RECEIVED_REJECT) { */
+            /*     // if we received a reject from the node we will transmit back a fail to it */
+            /*     unicast_fail(roundNumber, from_addr);  */
+            /* } */
             }
 
             neighbor->grant_or_reject_state = DRAND_RECEIVED_GRANT;
@@ -490,6 +572,7 @@ static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr) {
                 break;
             }
         }
+        
         if(neighbor == NULL) {
             neighbor = memb_alloc(&drand_neighbor_memb);
             neighbor->neighbor_addr.u8[0] = neighbor_addr_high;
@@ -504,7 +587,15 @@ static void handle_grant(uint8_t roundNumber, const linkaddr_t *from_addr) {
 
     grant_reject_update_dA(reception_time);
 
-    check_all_received();
+    if(!check_pending()) {
+        ctimer_stop(&request_timeout_timer);        
+    }
+
+    if(!node_state.has_timeslot && check_all_grant()) {
+        pick_timeslot();
+        drand_change_state(DRAND_RELEASE);
+        broadcast_release(node_state.currentRound);
+    }
 }
 
 static void handle_request(uint8_t roundNumber, const linkaddr_t *from_addr) {
@@ -515,10 +606,21 @@ static void handle_request(uint8_t roundNumber, const linkaddr_t *from_addr) {
         node_state.grant_neighbor_addr = *from_addr;
         node_state.grant_neighbor_round = roundNumber;
         send_grant(node_state.grant_neighbor_round, &node_state.grant_neighbor_addr);
+        ctimer_set(&fail_release_timeout_timer, node_state.dA, fail_release_timeout_callback, NULL);
         break;
     case DRAND_REQUEST:
     case DRAND_GRANT:
-        send_reject(roundNumber, from_addr);
+        /* if(drand_compare_address(&node_state.grant_neighbor_addr, from_addr) && node_state.grant_neighbor_round == roundNumber) { */
+        /*     send_grant(roundNumber, from_addr); */
+        /* } else { */
+        // we will send a reject to the node we received request from
+
+        // TODO we have a timeout which resends grant messages. But couldn't we also answer to a repeated request with a grant?
+        if(!drand_compare_address(&node_state.grant_neighbor_addr, from_addr)) {
+            send_reject(roundNumber, from_addr);
+        }
+        /* } */
+        break;
     }
 }
 
@@ -526,7 +628,18 @@ static void handle_release(uint8_t roundNumber, const linkaddr_t *from_addr) {
     uint8_t other_timeslot;
     memcpy(&other_timeslot, packetbuf_dataptr() + 2, sizeof(uint8_t));
 
-    ctimer_stop(&fail_release_timeout_timer);    
+    // check first if we even expect a release message
+    if(node_state.drand_state != DRAND_GRANT) {
+        printf("received release, but we are not in GRANT\n");
+        return;
+    }
+
+    if (!drand_compare_address(&node_state.grant_neighbor_addr, from_addr) || !(roundNumber == node_state.grant_neighbor_round)) {
+        printf("received release from neighbor we did not grant to. %u vs %u\n", roundNumber, node_state.grant_neighbor_round);
+        return;
+    }
+    
+    ctimer_stop(&fail_release_timeout_timer);
 
     // update neighbor state from which we received release
     struct drand_neighbor_state *neighbor = NULL;
@@ -585,6 +698,10 @@ static void pick_timeslot() {
     uint8_t min_free_timeslot = 0;
     uint8_t found[node_state.max_slotframe_length];
 
+    /* if(node_state.has_timeslot) { */
+    /*     return; */
+    /* } */
+
     // initialize with zeros
     for(uint8_t i = 0; i < node_state.max_slotframe_length; i++) {
         found[i] = 0;
@@ -612,15 +729,18 @@ static void pick_timeslot() {
         return;
     }
 
+    // call callback only once
+    if(!node_state.has_timeslot) {
+        node_state.timeslot_callback(min_free_timeslot);        
+    }    
+
     node_state.has_timeslot = 1;
     node_state.own_timeslot = min_free_timeslot;
-
-    printf("Picked timeslot %u\n", min_free_timeslot);
 }
 
 
 static void broadcast_release(uint8_t roundNumber) {
-    printf("broadcasting release with timeslot %u\n", node_state.own_timeslot);
+    printf("broadcasting release with round number %u and timeslot %u\n", roundNumber, node_state.own_timeslot);
     // broadcast release message as well as chosen timeslot
     uint8_t buf[3];
     buf[0] = DRAND_MSG_RELEASE;
@@ -632,6 +752,7 @@ static void broadcast_release(uint8_t roundNumber) {
 
 static void unicast_release(uint8_t roundNumber, const linkaddr_t *node_addr) {
     // unicast release message as well as chosen timeslot
+    printf("unicasting release with round number %u and timeslot %u\n", roundNumber, node_state.own_timeslot);
     uint8_t buf[3];
     buf[0] = DRAND_MSG_RELEASE;
     buf[1] = roundNumber;
@@ -655,39 +776,64 @@ static void broadcast_two_hop_release(uint8_t roundNumber, uint8_t timeslot, con
     broadcast_send(&broadcast);
 }
 
-static void check_all_received() {
+static uint8_t check_all_grant() {
     // go over neighbor list and check whether we have received a release for all neighbors
     printf("check_all_received\n");
     struct drand_neighbor_state *neighbor = NULL;
     uint8_t all_grant = 1;
-    uint8_t have_pending = 0;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
         if(neighbor->node_type == DIRECT_NEIGHBOR) {
-            if(neighbor->grant_or_reject_state == DRAND_ANSWER_PENDING) {
-                have_pending = 1;
+            if(neighbor->grant_or_reject_state != DRAND_RECEIVED_GRANT) {
                 all_grant = 0;
-            }
-
-            if(neighbor->grant_or_reject_state == DRAND_RECEIVED_REJECT) {
-                all_grant = 0;
+                break;
             }
         }
     }
-
-    // if we received all messages we will unset the request_timeout_timer
-    if(!have_pending) {
-        ctimer_stop(&request_timeout_timer);
-    }
-
-    if(all_grant) {
-        pick_timeslot();
-        drand_change_state(DRAND_RELEASE);
-        broadcast_release(node_state.currentRound);
-    }
+    
+    return all_grant;
 }
+
+static uint8_t check_pending() {
+    printf("check_all_received\n");
+    struct drand_neighbor_state *neighbor = NULL;
+    uint8_t pending = 0;
+    for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
+        if(neighbor->node_type == DIRECT_NEIGHBOR) {
+            if(neighbor->grant_or_reject_state == DRAND_ANSWER_PENDING) {
+                pending = 1;
+                break;
+            }
+        }
+    }
+    
+    return pending;    
+}
+
+#define MTM_ROUND_START_OFFSET 1
 
 void drand_init(uint8_t max_slotframe_length) {
     node_state.max_slotframe_length = max_slotframe_length;
+
+    // configure initial slotframe layout
+    struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, max_slotframe_length + MTM_ROUND_START_OFFSET);
+    tsch_schedule_add_link(
+        sf_eb,
+        LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
+        LINK_TYPE_ADVERTISING,
+        &tsch_broadcast_address,
+        0,
+        0);
+
+    // initialize all other links as RX PROP MTM
+    for(int i = MTM_ROUND_START_OFFSET; i < max_slotframe_length+1; i++) {
+        tsch_schedule_add_link(
+            sf_eb,
+            LINK_OPTION_RX,
+            LINK_TYPE_PROP_MTM,
+            &tsch_broadcast_address,
+            i,
+            0);
+    }
 
     neighbor_discovery_open(&neighbor_discovery,
                              42,
@@ -716,15 +862,19 @@ static void neighbors_set_response_pending() {
 
 
 static void fail_release_timeout_callback(void*) {
-    printf("FAIL RELEASE TIMEOUT CALLBACK\n");
+    printf("FAIL RELEASE TIMEOUT: resending grant\n");
     send_grant(node_state.grant_neighbor_round, &node_state.grant_neighbor_addr);
+    
+    ctimer_reset(&fail_release_timeout_timer);
 }
 
 static void request_timeout_callback(void*) {
-    printf("REQUEST TIMEOUT CALLBACK\n");
+    printf("REQUEST TIMEOUT: Resending request\n");
+    
+    node_state.last_request_time = clock_time();
     resend_request(node_state.currentRound);
     
-    ctimer_set(&request_timeout_timer, node_state.dA, request_timeout_callback, NULL);    
+    ctimer_reset(&request_timeout_timer);
 }
 
 // I don't think we should do this but rather use the last_seen stats
@@ -762,54 +912,59 @@ static void pretty_print_drand_state(enum DRAND_STATE state) {
 
 static void print_drand_status() {
     // nicely print current node status and status of neighbors
-    printf("------------------------------------\n");
-    printf("Node %u.%u: ", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
-    printf("current_state: ");
+    PRINTF("------------------------------------\n");
+    PRINTF("Node %u.%u: ", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+    PRINTF("current_state: ");
     pretty_print_drand_state(node_state.drand_state);
-    printf("\n");
+    PRINTF("\n");
+    PRINTF("current request timeout: %u\n", node_state.dA);
 
     struct drand_neighbor_state *neighbor = NULL;
     for(neighbor = list_head(drand_neighbor_list); neighbor != NULL; neighbor = neighbor->next) {
-        printf("Neighbor %u.%u, Status: ", neighbor->neighbor_addr.u8[0], neighbor->neighbor_addr.u8[1]);
+        PRINTF("Neighbor %u.%u, Status: ", neighbor->neighbor_addr.u8[0], neighbor->neighbor_addr.u8[1]);
         switch(neighbor->grant_or_reject_state) {
             case DRAND_ANSWER_PENDING:
-                printf("Pending");
+                PRINTF("Pending");
                 break;
             case DRAND_RECEIVED_GRANT:
-                printf("Granted");
+                PRINTF("Granted");
                 break;
             case DRAND_RECEIVED_REJECT:
-                printf("Rejected");
+                PRINTF("Rejected");
                 break;
             default:
-                printf("Unknown state");
+                PRINTF("Unknown state");
                 break;
         }
 
         // print TWO hop type
-        printf(", Hops: ");
+        PRINTF(", Hops: ");
         switch(neighbor->node_type) {
             case DIRECT_NEIGHBOR:
-                printf("1");
+                PRINTF("1");
                 break;
         case TWO_HOP_NEIGHBOR:
-                printf("2");
+                PRINTF("2");
                 break;
          default:
-                printf("?");
+                PRINTF("?");
                 break;
         }
         
         if(neighbor->has_timeslot) {
-            printf(", Slot: %u\n", neighbor->chosen_timeslot);
+            PRINTF(", Slot: %u", neighbor->chosen_timeslot);
         }
 
-        printf("\n");
+        /* watchdoc periodic */
+        watchdog_periodic();
+        
+        PRINTF("\n");
     }
     
     if(node_state.has_timeslot) {
-        printf("Timeslot: %u\n", node_state.own_timeslot);
+        PRINTF("Timeslot: %u\n", node_state.own_timeslot);
     }
+    PRINTF("------------------------------------\n");
 }
 
 PROCESS_THREAD(drand_process, ev, data)
@@ -819,7 +974,7 @@ PROCESS_THREAD(drand_process, ev, data)
   static uint8_t drand_running = 0;
 
 // we will run a neighbor discovery for about 20 seconds before beginning the coloring algorithm
-  etimer_set(&neighbor_discovery_phase_timer, CLOCK_SECOND * 10);
+  etimer_set(&neighbor_discovery_phase_timer, CLOCK_SECOND * 40);
   /* ctimer_set(&purge_neighbors_timer, CLOCK_SECOND * 10, purge_neighbors, NULL); */
 
   while(1) {
@@ -833,24 +988,23 @@ PROCESS_THREAD(drand_process, ev, data)
           drand_change_state(DRAND_IDLE);
 
           etimer_stop(&neighbor_discovery_phase_timer); // is this enough to prevent multiple triggers?
-          /* neighbor_discovery_close(&neighbor_discovery); */
+          neighbor_discovery_close(&neighbor_discovery);
           drand_running = 1;
       } else if(etimer_expired(&drand_phase_timer) && drand_running) {
           print_drand_status();
           // no more neighbor discovery needed
-          if(node_state.drand_state == DRAND_IDLE && try_lottery()  && !node_state.has_timeslot) {
+          if(!node_state.has_timeslot && node_state.drand_state == DRAND_IDLE && toss_coin() && try_lottery()) {
               printf("Node %u.%u won the lottery\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
               drand_change_state(DRAND_REQUEST);
               neighbors_set_response_pending();
               
-              broadcast_request(node_state.drand_state);
+              broadcast_request(node_state.currentRound);
               
               // start timer based on the value of node_state.dA              
               node_state.last_request_time = clock_time();
               ctimer_set(&request_timeout_timer, node_state.dA, request_timeout_callback, NULL);
-          } else {
-              drand_change_state(DRAND_IDLE);
           }
+          
           etimer_reset(&drand_phase_timer);
       }
   }

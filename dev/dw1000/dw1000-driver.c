@@ -1835,7 +1835,7 @@ dw1000_set_tsch_channel(uint8_t channel) {
   dw1000_conf.preamble_code = dw1000_get_preamble_code(dw1000_conf.channel, dw1000_conf.prf);
   dw_set_prf(dw1000_conf.prf);
   dw_set_channel(dw1000_conf.channel);
-  #if UWB_SMART_TX_POWER
+  #if UWB_SMART_TX_POWER && !UWB_TX_REDUCED_RANGE
   if(dw1000_conf.data_rate != DW_DATA_RATE_6800_KBPS){
     dw_set_manual_tx_power(dw1000_conf.channel, dw1000_conf.prf);
   }

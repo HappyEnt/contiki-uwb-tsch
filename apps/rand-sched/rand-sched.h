@@ -46,8 +46,6 @@
 /* extern linkaddr_t orchestra_parent_linkaddr; */
 
 /* Call from application to start Orchestra */
-void drand_init(uint8_t max_slotframe_length);
-
-void drand_set_timeslot_callback(void (*cb)(uint8_t timeslot));
+void rand_sched_init(uint8_t max_mtm_slots);
 
 #endif /* __DRAND_H__ */

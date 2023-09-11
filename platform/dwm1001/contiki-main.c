@@ -64,7 +64,7 @@
 #include "deca_device_api.h"
 /* #include "dw1000-arch.h" */
 /* #include "dw1000-config.h" */
-#include "bt2uwb-addr.h"
+#include "platform-addr.h"
 
 /*---------------------------------------------------------------------------*/
 #if NETSTACK_CONF_WITH_IPV6
@@ -162,7 +162,23 @@ configure_addresses(void)
   uint8_t ext_addr[8];
   printf("configure_addresses\n");
 
-#if (DWM1001_USE_BT_ADDR_FOR_UWB && SOFTDEVICE_PRESENT)
+
+#if DWM1001_LINKADDR_FROM_FILE
+  #include "dwm1001_linkaddr_mapping.h"
+  uint32_t deviceaddr1 =  NRF_FICR->DEVICEADDR[0];
+  uint32_t deviceaddr2 =  NRF_FICR->DEVICEADDR[1];
+
+  uint8_t ficraddr[6];  
+  
+  ficraddr[0] = (deviceaddr1 >> 0)  & 0xff;
+  ficraddr[1] = (deviceaddr1 >> 8)  & 0xff;
+  ficraddr[2] = (deviceaddr1 >> 16) & 0xff;
+  ficraddr[3] = (deviceaddr1 >> 24) & 0xff;
+  ficraddr[4] = (deviceaddr2 >> 0)  & 0xff;
+  ficraddr[5] = get_high_byte_for_dev1addr(deviceaddr1);
+  dwm1001_ficr2uwb_addr(ficraddr, ext_addr);
+  
+#elif (DWM1001_USE_BT_ADDR_FOR_UWB && SOFTDEVICE_PRESENT)
   printf("Using BT address for UWB\n");
 
   /* Use the BT 6-byte address as the UWB address with a 2-byte prefix */
@@ -170,22 +186,28 @@ configure_addresses(void)
   sd_ble_gap_addr_get(&ble_addr);
   dwm1001_bt2uwb_addr(ble_addr.addr, ext_addr);
 
-#elif (!DWM1001_USE_BT_ADDR_FOR_UWB)
-  // TODO CHANGE THIS BACK CHANGE THIS BACK CHANGE THIS BACK
-  uint32_t randomness_1, randomness_2;
-  randomness_1 = dw_get_device_time();
-  randomness_2 = dw_get_device_time();
+#elif (!SOFT_DEVICE_PRESENT)
+  printf("Using FICR address for UWB\n");
+  // read DEVICEID and DEVICEADDR registers from 52832 chip
+  uint32_t deviceaddr1 =  NRF_FICR->DEVICEADDR[0];
+  uint32_t deviceaddr2 =  NRF_FICR->DEVICEADDR[1];  
 
+  uint8_t ficraddr[6];
 
-  /* Compute the Link Layer addresses depending on the PART and LOT IDs */
-  ext_addr[0] = (randomness_1  & 0xFF000000) >> 24;
-  ext_addr[1] = (randomness_1  & 0x00FF0000) >> 16;
-  ext_addr[2] = (randomness_1  & 0x0000FF00) >> 8;
-  ext_addr[3] = (randomness_1  & 0x000000FF);
-  ext_addr[4] = (randomness_2 & 0xFF000000) >> 24;
-  ext_addr[5] = (randomness_2 & 0x00FF0000) >> 16;
-  ext_addr[6] = (randomness_2 & 0x0000FF00) >> 8;
-  ext_addr[7] = (randomness_2 & 0x000000FF);
+  // only bits 15:0 of deviceaddr[1] are used
+  ficraddr[0] = (deviceaddr1 >> 0) & 0xff;
+  ficraddr[1] = (deviceaddr1 >> 8) & 0xff;
+  ficraddr[2] = (deviceaddr1 >> 16) & 0xff;
+  ficraddr[3] = (deviceaddr1 >> 24) & 0xff;
+  ficraddr[4] = (deviceaddr2 >> 0) & 0xff;
+  ficraddr[5] = (deviceaddr2 >> 8) & 0xff;
+
+  printf("devaddr1 %u\n", deviceaddr1);
+  
+    /* Use the 6-byte device address as the UWB address with a 2-byte prefix */
+  dwm1001_ficr2uwb_addr(ficraddr, ext_addr);
+  // initialize short address only for now
+
 #else
 #error Requested to use BT address for UWB but SoftDevice is not present.
 #endif

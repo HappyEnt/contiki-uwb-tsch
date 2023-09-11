@@ -16,7 +16,7 @@ BOARD_ROOT_PATH := $(dir $(board_makefile))
 CONTIKIDIRS := $(addprefix $(BOARD_ROOT_PATH)/, $(BOARD_DIRS)) $(CONTIKIDIRS)
 
 CONTIKI_TARGET_DIRS += . dev config
-CONTIKI_SOURCEFILES += contiki-main.c temperature-sensor.c bt2uwb-addr.c
+CONTIKI_SOURCEFILES += contiki-main.c temperature-sensor.c platform-addr.c
 CONTIKI_SOURCEFILES += battery_read.c
 
 # Add DW1000 architecture-dependent drivers

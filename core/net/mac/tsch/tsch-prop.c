@@ -79,10 +79,6 @@
 #define SPEED_OF_LIGHT_M_PER_S 299702547.236
 #define SPEED_OF_LIGHT_M_PER_UWB_TU ((SPEED_OF_LIGHT_M_PER_S * 1.0E-15) * 15650.0) // around 0.00469175196
 
-struct ds_twr_ts
-{
-    uint64_t t_a1, r_b1, t_b1, r_a1, t_a2, r_b2, t_b2, r_a2;
-};
 
 #define WITH_PASSIVE_TDOA 1
 #if WITH_PASSIVE_TDOA
@@ -102,7 +98,15 @@ struct mtm_pas_tdoa
     ranging_addr_t B_addr;
 
     struct distance_measurement last_measurement;
-    
+
+    // this information is used to detect when a round was successfully received
+    // for this we must get a return message from B which was send in the same
+    // round as the tx timestamp that we extract from A's message
+    uint64_t most_recent_tx_A, rx_timestamp_L1, most_recent_tx_B, rx_timestamp_L2;
+    uint8_t rx_timeslot_L1, rx_timeslot_L2, rx_round_counter_L1, rx_round_counter_L2; // stores in which round and timeslot we did receive the message we identify as initiator message at
+
+    uint8_t closed_round;
+
     struct ds_twr_ts ds_ts;
     uint64_t r_l1, r_l2, r_l3, r_l4;
 };
@@ -110,35 +114,6 @@ struct mtm_pas_tdoa
 int32_t mtm_compute_tdoa(struct mtm_pas_tdoa *ts);
 
 #endif
-
-enum mtm_neighbor_type  {
-    MTM_DIRECT_NEIGHBOR,
-    MTM_TWO_HOP_NEIGHBOR,
-};
-
-enum mtm_node_role {
-    MTM_PASSIVE,
-    MTM_ACTIVE,
-    MTM_ANCHOR // an anchor is a active participant that never loses its slot 
-};
-
-#define MAX_MISSED_OBSERVATIONS 20 // after not observing a neighbor for 5 rounds we will consider him a goner
-#define MTM_RANGING_SLOTS 3 // restricts the maximum degree that any node in the graph might have
-#define MTM_MAX_DIRECT 2
-
-struct mtm_neighbor {
-    struct mtm_neighbor *next;
-
-    ranging_addr_t neighbor_addr;
-    struct ds_twr_ts ts;
-    
-    struct distance_measurement last_measurement;
-
-    enum mtm_neighbor_type type;
-    enum mtm_node_role neighbor_role;
-
-    uint8_t missed_observations, observed_this_round, timeslot_offset;
-};
 
 void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n);
 /* float calculate_propagation_time_alternative(struct ds_twr_ts *ts); */
@@ -169,15 +144,17 @@ MEMB(mtm_prop_neighbor_memb, struct mtm_neighbor, TSCH_MTM_PROP_MAX_MEASUREMENT)
 MEMB(mtm_prop_rx_memb, struct mtm_rx_queue_item, TSCH_MTM_PROP_MAX_NEIGHBORS);
 MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MTM_PROP_MAX_NEIGHBORS);
 
-
+static uint64_t most_recent_tx_timestamp;
+static uint8_t round_counter;
+static uint8_t our_tx_timeslot;
+// a simple monotic counter which is used to prevent timestamp misassociation in case of packet drops
 
 // this will be used to return a array of timestamps that we read from the user
 static struct mtm_packet_timestamp return_timestamps[TSCH_MTM_PROP_MAX_NEIGHBORS];
 
-static enum mtm_node_role mtm_current_node_role = MTM_PASSIVE;
-static uint8_t mtm_active_our_timeslot = 0;
-static uint8_t mtm_active_missed_observations = 0;
-
+list_t tsch_prop_get_neighbor_list() {
+    return ranging_neighbor_list;
+}
 
 // protos
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts);
@@ -194,11 +171,15 @@ static inline int64_t interval_correct_overflow(uint64_t high_ts, uint64_t low_t
     int64_t high_ts_i = (int64_t) high_ts;
     int64_t low_ts_i = (int64_t) low_ts;
     if (high_ts_i < low_ts_i) {
-        printf("interval_correct_overflow: high_ts < low_ts\n");
+        _PRINTF("interval_correct_overflow: high_ts < low_ts\n");
         return (DW_TIMESTAMP_MAX_VALUE - low_ts_i) + high_ts_i;
     }
 
     return high_ts_i - low_ts_i;
+}
+
+void set_mtm_tx_slot(uint8_t timeslot) {
+    our_tx_timeslot = timeslot;
 }
 
 void init_ds_twr_struct(struct ds_twr_ts *ds) {
@@ -217,7 +198,8 @@ void init_tdoa_struct(struct mtm_pas_tdoa *tdoa) {
     tdoa->r_l1 = UINT64_MAX;
     tdoa->r_l2 = UINT64_MAX;
     tdoa->r_l3 = UINT64_MAX;
-    tdoa->r_l4 = UINT64_MAX;    
+    tdoa->r_l4 = UINT64_MAX;
+    tdoa->closed_round = 0;
     init_ds_twr_struct(&tdoa->ds_ts);
 }
 
@@ -225,98 +207,24 @@ int pas_tdoa_all_initialized(struct mtm_pas_tdoa *tdoa) {
     if (tdoa->r_l1 == UINT64_MAX) return 0;
     if (tdoa->r_l2 == UINT64_MAX) return 0;
     if (tdoa->r_l3 == UINT64_MAX) return 0;
-    if (tdoa->r_l4 == UINT64_MAX) return 0;
-    if (tdoa->ds_ts.r_a1 == UINT64_MAX) return 0;
-    /* if (tdoa->ds_ts.r_a2 == UINT64_MAX) return 0; */
-    if (tdoa->ds_ts.r_b1 == UINT64_MAX) return 0;
-    if (tdoa->ds_ts.r_b2 == UINT64_MAX) return 0;
+
     if (tdoa->ds_ts.t_a1 == UINT64_MAX) return 0;
-    if (tdoa->ds_ts.t_a2 == UINT64_MAX) return 0;
-    if (tdoa->ds_ts.t_b1 == UINT64_MAX) return 0;
-    /* if (tdoa->ds_ts.t_b2 == UINT64_MAX) return 0; */
+    if (tdoa->ds_ts.r_b1 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.t_b1 == UINT64_MAX) return 0;    
+    if (tdoa->ds_ts.r_a1 == UINT64_MAX) return 0;
+    if (tdoa->ds_ts.t_a2 == UINT64_MAX) return 0;    
+    if (tdoa->ds_ts.r_b2 == UINT64_MAX) return 0;
+    
     return 1;
 }
 
 #endif
 
 void print_mtm_neighbors() {
-    printf("-------MTM NEIGHBORS-------\n");
+    _PRINTF("-------MTM NEIGHBORS-------\n");
     struct mtm_neighbor *n = NULL;
     for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
-        printf("%d, type: %d, timeslot %d, missed_observations: %d \n", n->neighbor_addr, n->type, n->timeslot_offset, n->missed_observations);
-    }
-}
-
-
-void mtm_scheduling_decision() {
-    uint8_t occupied_timeslots[MTM_RANGING_SLOTS+1] = {0x00};
-    uint8_t directCount = 0, indirectCount = 0; // counters for direct and indirect taken slots
-
-    //iterate over links an mark all links that are not of type MTM_PROP as unavailable
-    
-    struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
-    if(sf_eb != NULL) {
-        struct tsch_link *l = NULL;
-        for(l = list_head(sf_eb->links_list); l != NULL; l = list_item_next(l)) {
-            if (l->link_type != LINK_TYPE_PROP_MTM) {
-                occupied_timeslots[l->timeslot] = 1;
-            }
-        }
-    }
-
-    /* occupied_timeslots[0] = 1; */
-    /* printf("scheduling_decision, current Role: %d, with slot: %d\n", mtm_current_node_role, mtm_active_our_timeslot); */
-    
-    // iterate over neighbor table
-    struct mtm_neighbor *n = NULL;
-    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
-        // if we have a two hop neighbor and we have a direct/indirect neighbor and we didn't observe it for some time we remove it
-        if (n->missed_observations >= MAX_MISSED_OBSERVATIONS) {
-            // remove from list
-            list_remove(ranging_neighbor_list, n);
-            // free memory
-            memb_free(&mtm_prop_neighbor_memb, n);
-        } else {
-            // entry still valid, mark timeslot as occupied
-            occupied_timeslots[n->timeslot_offset] = 1;
-            if(n->type == MTM_DIRECT_NEIGHBOR) {
-                directCount++;
-            } else {
-                indirectCount++;
-            }
-        }
-    }
-
-    // in case that we already have a timeslot, skip
-    if (mtm_current_node_role == MTM_ACTIVE || mtm_current_node_role == MTM_ANCHOR) {
-        return;
-    }
-
-    // otherwise check whether we are eligible to take a slot
-    if(directCount > MTM_MAX_DIRECT) {
-        return;
-    }
-    
-
-    // if there is a free timeslot we will take it greedily
-    printf("mtm_scheduling_decision: checking for free timeslots\n");
-    for (int i = 0; i < MTM_RANGING_SLOTS+1; i++) {
-        if (!occupied_timeslots[i]) {
-            mtm_active_our_timeslot = i;
-            mtm_current_node_role = MTM_ACTIVE;            
-            mtm_active_missed_observations = 0;
-            // we found a free timeslot, lets create a tx link here for ourselves
-
-            printf("taking slot %d\n", mtm_active_our_timeslot);
-            
-            struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
-            if(sf_eb != NULL) {
-                struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, i);
-                l->link_options = LINK_OPTION_TX;
-            }
-            
-            break;
-        }
+        _PRINTF("%d, type: %d, timeslot %d, missed_observations: %d \n", n->neighbor_addr, n->type, n->timeslot_offset, n->missed_observations);
     }
 }
 
@@ -328,27 +236,24 @@ void mtm_indirect_observed_node(ranging_addr_t neighbor, uint8_t timeslot_offset
         }
     }
 
-    if (n != NULL) {
-        // in case that the entry is a of MTM_DIRECT_TYPE we will do nothing
-        if (n->type == MTM_TWO_HOP_NEIGHBOR) {
-            n->missed_observations = 0;
-            n->observed_this_round = 1;            
-        }
-    } else {
+    if (n == NULL) {
         // create new neighbor
-        struct mtm_neighbor *new_neighbor = memb_alloc(&mtm_prop_neighbor_memb);
-        if (new_neighbor != NULL) {
-            new_neighbor->neighbor_addr = neighbor;
-            new_neighbor->type = MTM_TWO_HOP_NEIGHBOR;
-            new_neighbor->missed_observations = 0;
-            new_neighbor->observed_this_round = 1;
-            new_neighbor->timeslot_offset = timeslot_offset;
-            list_add(ranging_neighbor_list, new_neighbor);
+        n = memb_alloc(&mtm_prop_neighbor_memb);
+        if (n != NULL) {
+            n->neighbor_addr = neighbor;
+            n->type = MTM_TWO_HOP_NEIGHBOR;
+            list_add(ranging_neighbor_list, n);
         }
+    }
+
+    if(n != NULL) { // this check is necessary as memory allocation might fail
+        n->last_observed = clock_time();
+        n->observed_timeslot = timeslot_offset;
     }
 }
 
 void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
+    /* printf("mtm_direct_observed_node: %d, %d\n", node, timeslot_offset); */
   // we don't pass this outside so we will just add it here for now
   // iterate over neighbor table
   struct mtm_neighbor *n = NULL;
@@ -358,93 +263,28 @@ void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
       }
   }
 
+  if(n == NULL) {
+        // create new neighbor
+        n = memb_alloc(&mtm_prop_neighbor_memb);
+        if (n != NULL) {
+            n->neighbor_addr = node;
+            n->total_found_ours_counter = 0;
+            list_add(ranging_neighbor_list, n);
+        }
+  }
+
   if (n != NULL) {
       // set neighbor type to direct neighbor
       n->type = MTM_DIRECT_NEIGHBOR;
-      n->missed_observations = 0;
-      n->observed_this_round = 1;
-      n->timeslot_offset = timeslot_offset;
+      n->observed_timeslot = timeslot_offset;
+      n->last_observed = clock_time();
   }
 }
 
-void mtm_update_schedule() {
-    mtm_scheduling_decision();
 
-    if (mtm_current_node_role == MTM_ACTIVE && mtm_active_missed_observations >= MAX_MISSED_OBSERVATIONS) {
-        mtm_current_node_role = MTM_PASSIVE;
-        mtm_active_missed_observations = 0;
-        printf("resetting\n");
-
-        // install rx link again
-        struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);            
-
-        if(sf_eb != NULL) {
-            struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, mtm_active_our_timeslot);
-            l->link_options = LINK_OPTION_RX;
-        }
-    }
-}
-
-void mtm_end_of_round() {
-    // increase missed observations for all nodes that we did not observe this round
-    struct mtm_neighbor *n = NULL;
-    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
-        if (!n->observed_this_round) {
-            n->missed_observations++;
-        }
-        n->observed_this_round = 0;
-    }
-}
-
-
-void mtm_handle_slot_end(uint8_t timeslot_offset) {
-    if (timeslot_offset == MTM_RANGING_SLOTS) {
-        mtm_end_of_round();
-    }
-}
-
-void mtm_set_node_anchor(uint8_t enable) {
-    mtm_current_node_role = enable ? MTM_ANCHOR : MTM_PASSIVE;
-}
-
-void mtm_init(uint8_t is_coordinator) {
-  struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, MTM_RANGING_SLOTS + 1);
-  tsch_schedule_add_link(
-          sf_eb,
-          LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
-          LINK_TYPE_ADVERTISING,
-          &tsch_broadcast_address,
-          0,
-          0);
-    // if our node_role is role_6dr we will take the first TX slot
-
-    tsch_schedule_add_link(
-            sf_eb,
-            is_coordinator ? LINK_OPTION_TX : LINK_OPTION_RX,
-            LINK_TYPE_PROP_MTM,
-            &tsch_broadcast_address,
-            1,
-            0
-        );
-
-    // initialize all other links as RX PROP MTM
-    for(int i = 2; i < MTM_RANGING_SLOTS+1; i++) {
-            tsch_schedule_add_link(
-                sf_eb,
-                LINK_OPTION_RX,
-                LINK_TYPE_PROP_MTM,
-                &tsch_broadcast_address,
-                i,
-                0);
-    }
-
-
-    if(is_coordinator) {
-        mtm_current_node_role = MTM_ANCHOR;
-        mtm_active_our_timeslot = 1;
-    } else {
-        mtm_current_node_role = MTM_PASSIVE;
-    }
+// TODO move outa here
+void mtm_init() {
+    round_counter = 0;
 }
 
 
@@ -454,7 +294,7 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
     struct mtm_rx_queue_item *t = NULL;
     
     if (list_length (rx_send_queue) >= TSCH_MTM_PROP_MAX_NEIGHBORS) {
-        printf("MTM: RX queue full, dropping received timestamp\n");
+        _PRINTF("MTM: RX queue full, dropping received timestamp\n");
         return;
     }
 
@@ -478,7 +318,7 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
             t->timeslot_offset = timeslot_offset;
             list_add(rx_send_queue, t);
         } else {
-            printf("MTM: Could not allocate memory for reception timestamp\n");
+            _PRINTF("MTM: Could not allocate memory for reception timestamp\n");
             return;
         }
     }
@@ -486,11 +326,10 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
 
 void add_mtm_reception_timestamp(
     ranging_addr_t neighbor_addr,
-    struct tsch_asn_t *asn,
-
+    struct tsch_asn_t *asn, // TODO not used yet
+    uint8_t timeslot,    
     uint64_t rx_timestamp_A,    
     uint64_t tx_timestamp_B,
-    
     struct mtm_packet_timestamp *rx_timestamps,
     uint8_t num_rx_timestamps
     )
@@ -505,7 +344,7 @@ void add_mtm_reception_timestamp(
 
     // if no neighbor entry could be found we will create an entry for the neighbor
     if (n == NULL) {
-        printf("MTM: No neighbor found for reception timestamp, Register new entry\n");
+        _PRINTF("MTM: No neighbor found for reception timestamp, Register new entry\n");
         // register neighbor in our ranging structure
         n = memb_alloc(&mtm_prop_neighbor_memb);
         if (n != NULL) {
@@ -518,7 +357,7 @@ void add_mtm_reception_timestamp(
         }
     }
 
-    #if WITH_PASSIVE_TDOA
+#if WITH_PASSIVE_TDOA
     // if passive tdoa is enabled we will update the passive tdoa structure for all neighbors in the message
     // that is even if we did not directly communicate with a pair of neighbors we can still derive a TDoA
     // estimate towards them using the method outlined in the paper
@@ -552,7 +391,7 @@ void add_mtm_reception_timestamp(
         }
 
         if(pas_tdoa == NULL) {
-            printf("MTM: No pas_tdoa found for %u and %u, create new entry\n", rx_addr, m_addr);
+            _PRINTF("MTM: No pas_tdoa found for %u and %u, create new entry\n", rx_addr, m_addr);
             // create a new entry
             pas_tdoa = memb_alloc(&mtm_pas_tdoa_memb);
             if (pas_tdoa != NULL) {
@@ -572,47 +411,77 @@ void add_mtm_reception_timestamp(
         // here we do the handling in case we found A in the list as initator
         if (pas_tdoa->A_addr == m_addr) {
             
-            pas_tdoa->r_l1 = pas_tdoa->r_l3;
-            pas_tdoa->r_l2 = pas_tdoa->r_l4;
-            pas_tdoa->r_l4 = UINT64_MAX; // to be filled in by the responder message in the other case below
-            
-            pas_tdoa->r_l3 = rx_timestamp_A;
-        
-            pas_tdoa->ds_ts.t_a1 = pas_tdoa->ds_ts.t_a2;
-            pas_tdoa->ds_ts.t_a2 = tx_timestamp_B;
-        
-            pas_tdoa->ds_ts.r_a1 = rx_timestamp;
+            pas_tdoa->most_recent_tx_A = tx_timestamp_B;
+            pas_tdoa->rx_round_counter_L1 = round_counter;
+            pas_tdoa->rx_timeslot_L1 = timeslot;
+            pas_tdoa->rx_timestamp_L1 = rx_timestamp_A;
 
-            pas_tdoa->ds_ts.r_b1 = pas_tdoa->ds_ts.r_b2;
-            pas_tdoa->ds_ts.r_b2 = UINT64_MAX; // to be filled in by the responder message in the other case below
+            // check whether the other round concluded
+            if (   (timeslot > pas_tdoa->rx_timeslot_L2 && round_counter == pas_tdoa->rx_round_counter_L2    )
+                || (timeslot < pas_tdoa->rx_timeslot_L2 && round_counter == pas_tdoa->rx_round_counter_L2 + 1)) {
+                
+                pas_tdoa->r_l4 = pas_tdoa->rx_timestamp_L2;
+                pas_tdoa->ds_ts.t_b2 = pas_tdoa->most_recent_tx_B;
+                pas_tdoa->ds_ts.r_a2 = rx_timestamp;
 
-            pas_tdoa->ds_ts.t_b1 = pas_tdoa->ds_ts.t_b2;
-            pas_tdoa->ds_ts.t_b2 = UINT64_MAX; // to be filled in by the responder message in the other case below
-            
+                // TODO we could in theory make another new distance estimation here, but we need to rewrite mtm_compute_tdoa
+                // so the timestamps for calculation are passed from outside
+
+                // push back the two rounds
+                pas_tdoa->r_l1 = pas_tdoa->r_l3;
+                pas_tdoa->r_l2 = pas_tdoa->r_l4;
+
+                pas_tdoa->ds_ts.t_b1 = pas_tdoa->ds_ts.t_b2;
+                pas_tdoa->ds_ts.t_a1 = pas_tdoa->ds_ts.t_a2;
+
+                pas_tdoa->ds_ts.r_b1 = pas_tdoa->ds_ts.r_b2;
+                pas_tdoa->ds_ts.r_a1 = pas_tdoa->ds_ts.r_a2;
+
+                // mark moved uninitialized
+                pas_tdoa->r_l3 = UINT64_MAX;
+                pas_tdoa->r_l4 = UINT64_MAX;
+                pas_tdoa->ds_ts.t_b2 = UINT64_MAX;
+                pas_tdoa->ds_ts.t_a2 = UINT64_MAX;
+                pas_tdoa->ds_ts.r_b2 = UINT64_MAX;
+                pas_tdoa->ds_ts.r_a2 = UINT64_MAX;
+
+                pas_tdoa->closed_round = 0;
+            }
         } else if (pas_tdoa->B_addr == m_addr) {
-            // this message concludes the round, calculate new TDoA estimate
-            int32_t tdoa;
+            pas_tdoa->most_recent_tx_B = tx_timestamp_B;
+            pas_tdoa->rx_round_counter_L2 = round_counter;
+            pas_tdoa->rx_timeslot_L2 = timeslot;
+            pas_tdoa->rx_timestamp_L2 = rx_timestamp_A;
+
+            // check whether the round and timeslot is as expected. In case that timeslot >
+            // rx_timeslot, we expect to be in the same round otherwise our round should be atmost
+            // rx_timeslot + 1
             
-            pas_tdoa->ds_ts.r_b2 = rx_timestamp;
-            pas_tdoa->ds_ts.t_b2 = tx_timestamp_B;
-            pas_tdoa->r_l4 = rx_timestamp_A;
+            if (!pas_tdoa->closed_round && (  (timeslot > pas_tdoa->rx_timeslot_L1 && round_counter == pas_tdoa->rx_round_counter_L1    )
+                    || (timeslot < pas_tdoa->rx_timeslot_L1 && round_counter == pas_tdoa->rx_round_counter_L1 + 1))) {
+                // Success! The round closes succesfully.
+                pas_tdoa->r_l3 = pas_tdoa->rx_timestamp_L1;
+                pas_tdoa->ds_ts.t_a2 = pas_tdoa->most_recent_tx_A;
+                pas_tdoa->ds_ts.r_b2 = rx_timestamp;
 
-            // check whether we have uninitialized entries
+                pas_tdoa->closed_round = 1; // we only want good rounds
 
-            if(pas_tdoa_all_initialized(pas_tdoa)) {
-                tdoa = mtm_compute_tdoa(pas_tdoa);
-
-                // update stored most recent measurement and notify user
-                pas_tdoa->last_measurement.type = TDOA;
-                pas_tdoa->last_measurement.addr_A = rx_addr;
-                pas_tdoa->last_measurement.addr_B = m_addr;
-                pas_tdoa->last_measurement.time = tdoa;
+                if(pas_tdoa_all_initialized(pas_tdoa)) {
+                    // this message closes the round
+                    int32_t tdoa;
             
-                notify_user_process_new_measurement(&pas_tdoa->last_measurement);                
+                    tdoa = mtm_compute_tdoa(pas_tdoa);
+
+                    // update stored most recent measurement and notify user
+                    pas_tdoa->last_measurement.type = TDOA;
+                    pas_tdoa->last_measurement.addr_A = rx_addr;
+                    pas_tdoa->last_measurement.addr_B = m_addr;
+                    pas_tdoa->last_measurement.time = tdoa;
+            
+                    notify_user_process_new_measurement(&pas_tdoa->last_measurement);                
+                }
             }
         }
-
-        /* linkaddr_t *neighbor_addr, */
     }
     
     #endif
@@ -622,18 +491,22 @@ void add_mtm_reception_timestamp(
     for(uint8_t i = 0; i < num_rx_timestamps; i++) {
         if(rx_timestamps[i].addr == linkaddr_node_addr.u8[LINKADDR_SIZE - 1]) {
                 uint64_t rx_timestamp_B = rx_timestamps[i].rx_timestamp;
-                
-                // current round is always the one with the higher numbers
+                // we got a return timestamp, so insert new round into our management structure
+                // shift old most recent round to the back
+                n->ts.t_a1 = n->ts.t_a2;                
                 n->ts.r_b1 = n->ts.r_b2;
                 n->ts.t_b1 = n->ts.t_b2;
                 n->ts.r_a1 = n->ts.r_a2;
 
+                // insert new round that just concluded
+                n->ts.t_a2 = most_recent_tx_timestamp;
                 n->ts.r_b2 = rx_timestamp_B;
                 n->ts.t_b2 = tx_timestamp_B;
                 n->ts.r_a2 = rx_timestamp_A;
-
+                
                 mtm_compute_dstwr(asn, n);
                 found_rx = 1;
+                n->total_found_ours_counter++; // yippie
         }
     }
 
@@ -650,10 +523,8 @@ void add_mtm_reception_timestamp(
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp) {
     // Update mtm_neighbor list after our own transmission event
     struct mtm_neighbor *n = NULL;
-    for(n = list_head(ranging_neighbor_list); n != NULL; n = list_item_next(n)) {
-        n->ts.t_a1 = n->ts.t_a2;
-        n->ts.t_a2 = tx_timestamp;
-    }
+    
+    most_recent_tx_timestamp = tx_timestamp;    
 }
 
 void print_ds_twr_durations(struct ds_twr_ts *ts) {
@@ -667,10 +538,10 @@ void print_ds_twr_durations(struct ds_twr_ts *ts) {
     // ts->txB1 - ts->rxB1;
     replier_reply = interval_correct_overflow(ts->t_b1, ts->r_b1);
 
-    printf("MTM: Initiator roundtrip: %d\n", initiator_roundtrip);
-    printf("MTM: Initiator reply: %d\n", initiator_reply);
-    printf("MTM: Replier roundtrip: %d\n", replier_roundtrip);
-    printf("MTM: Replier reply: %d\n", replier_reply);
+    _PRINTF("MTM: Initiator roundtrip: %d\n", initiator_roundtrip);
+    _PRINTF("MTM: Initiator reply: %d\n", initiator_reply);
+    _PRINTF("MTM: Replier roundtrip: %d\n", replier_roundtrip);
+    _PRINTF("MTM: Replier reply: %d\n", replier_reply);
 }
 
 void print_ds_twr_timestamps(struct ds_twr_ts *ts) {
@@ -686,7 +557,7 @@ void print_ds_twr_timestamps(struct ds_twr_ts *ts) {
 }
 
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts) {
-    printf(" t_a1: " LOG_LLU_MARK " r_b1: " LOG_LLU_MARK " t_b1: " LOG_LLU_MARK
+    _PRINTF(" t_a1: " LOG_LLU_MARK " r_b1: " LOG_LLU_MARK " t_b1: " LOG_LLU_MARK
             " r_a1: " LOG_LLU_MARK " t_a2: " LOG_LLU_MARK " r_b2: " LOG_LLU_MARK
             " t_b2: " LOG_LLU_MARK " r_a2: " LOG_LLU_MARK " r_l1: " LOG_LLU_MARK
         " r_l2: " LOG_LLU_MARK " r_l2: " LOG_LLU_MARK "\n",
@@ -707,7 +578,7 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
     // first check whether neighbor has a valid entry in our list and none of the timestamps are uninitialized, i.e., of value UINT64_MAX;
 
     if (mtm_n == NULL) {
-        printf("MTM: Neighbor not found in list\n");
+        _PRINTF("MTM: Neighbor not found in list\n");
         return;
     }
 
@@ -716,7 +587,7 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
         || mtm_n->ts.t_a2 == UINT64_MAX || mtm_n->ts.r_b2 == UINT64_MAX
         || mtm_n->ts.t_b2 == UINT64_MAX || mtm_n->ts.r_a2 == UINT64_MAX
         ) {
-        printf("MTM: Neighbor has uninitialized timestamps\n");
+        _PRINTF("MTM: Neighbor has uninitialized timestamps\n");
 
         return;
     }
@@ -743,8 +614,10 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
 
     // TODO Added for debugging remove again
     if (range < -10 || range > 10) {
-        print_ds_twr_timestamps(&mtm_n->ts);        
-        print_ds_twr_durations(&mtm_n->ts);
+#if WITH_UART_OUTPUT_RANGE // we reuse this flag here. This print ooperation is heavy and should only be done when using RTT
+        /* print_ds_twr_timestamps(&mtm_n->ts); */
+        /* print_ds_twr_durations(&mtm_n->ts); */
+#endif
     }
     
     // update stored measurement for node
@@ -847,7 +720,7 @@ int tsch_packet_create_multiranging_packet(
 }
 
 int
-tsch_packet_parse_multiranging_packet (
+tsch_packet_parse_multiranging_packet(
     uint8_t *buf,
     int buf_size,
     uint8_t timeslot_offset,
@@ -892,7 +765,7 @@ tsch_packet_parse_multiranging_packet (
     return 0;
   }
 
-  mtm_direct_observed_node( src.u8[LINKADDR_SIZE-1], timeslot_offset);
+  mtm_direct_observed_node( src.u8[LINKADDR_SIZE-1], timeslot_offset );
   
   /* curr_len = curr_len + sizeof(candidate_bitmask); */
 
@@ -903,6 +776,7 @@ tsch_packet_parse_multiranging_packet (
   // extract rx timestamp amount
   uint8_t amount_of_measurements;
   uint8_t mtm_found_our_own;
+
   memcpy(&tx_timestamp, &buf[curr_len], sizeof(uint64_t));
   curr_len = curr_len + sizeof(uint64_t);
   memcpy(&amount_of_measurements, &buf[curr_len], sizeof(uint8_t));
@@ -922,17 +796,10 @@ tsch_packet_parse_multiranging_packet (
       // update two_hop counter
       if(neighbor != linkaddr_node_addr.u8[LINKADDR_SIZE-1]) {
           mtm_indirect_observed_node(neighbor, timeslot_offset);
-      } else {
-          mtm_found_our_own = 1;
       }
       
       return_timestamps[i].addr = neighbor;
       return_timestamps[i].rx_timestamp = rx_timestamp;
-  }
-
-  if(mtm_current_node_role == MTM_ACTIVE && !mtm_found_our_own) {
-      mtm_active_missed_observations++;
-
   }
 
   *num_timestamps = amount_of_measurements;
@@ -963,17 +830,16 @@ int32_t mtm_compute_tdoa(struct mtm_pas_tdoa *ts) {
     R_b = interval_correct_overflow(ts->ds_ts.r_b2 , ts->ds_ts.t_b1);
     D_b = interval_correct_overflow(ts->ds_ts.t_b1 , ts->ds_ts.r_b1);
 
-    /* printf("M_a " LOG_LLU_MARK " M_b " LOG_LLU_MARK " R_a " LOG_LLU_MARK */
-    /*        " D_a " LOG_LLU_MARK "\n", */
-    /*        LOG_LLU(M_a), LOG_LLU(M_b), LOG_LLU(R_a), LOG_LLU(D_a)); */
-
+    _PRINTF("M_a " LOG_LLU_MARK " M_b " LOG_LLU_MARK " R_a " LOG_LLU_MARK
+           " D_a " LOG_LLU_MARK "\n",
+           LOG_LLU(M_a), LOG_LLU(M_b), LOG_LLU(R_a), LOG_LLU(D_a));
+    
     // M_a + M_b and R_a 
     prop_drift_coff = (double)((int64_t)M_a + M_b) / (double)((int64_t)R_a + D_a);
 
-    ToF_ab = compute_prop_time(R_a, D_a, R_b, D_b);
+    ToF_ab = calculate_propagation_time_alternative(&ts->ds_ts);
 
-    _PRINTF("prop_drift_coff " NRF_LOG_FLOAT_MARKER " ToF_ab %d \n", NRF_LOG_FLOAT((float)prop_drift_coff),
-           ToF_ab);
+    _PRINTF("prop_drift_coff " NRF_LOG_FLOAT_MARKER " ToF_ab %d \n", NRF_LOG_FLOAT((float)prop_drift_coff), ToF_ab);
 
     TD = prop_drift_coff * (R_a - ToF_ab) - M_a;
 
@@ -1060,7 +926,7 @@ update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time,
 {
   struct tsch_prop_time n_prop_time;
 
-  printf("updating neighbor with addr %u prop time %d\n", n->addr.u8[LINKADDR_SIZE-1], prop_time);
+  /* printf("updating neighbor with addr %u prop time %d\n", n->addr.u8[LINKADDR_SIZE-1], prop_time); */
 
   n_prop_time.prop_time = prop_time;
   n_prop_time.asn = * asn; /* Copy the 5 bytes pointed by the pointer * asn to the n_prop_time.asn struct */
@@ -1074,43 +940,45 @@ update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time,
 }
 
 
-/* int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) { */
-/*     static float relative_drift_offset; */
-/*     static uint64_t other_duration, own_duration; */
-/*     static uint64_t round_duration_b, delay_duration_a; */
-/*     static int64_t drift_offset_int, two_tof_int; */
-
-/*     other_duration = interval_correct_overflow(ts->t_b2, ts->t_b1); */
-/*     own_duration   = interval_correct_overflow(ts->r_a2, ts->r_a1); */
-
-/*     relative_drift_offset = (float) ((int64_t)own_duration - (int64_t) other_duration) / (float) other_duration; */
-
-/*     round_duration_b = interval_correct_overflow( ts->t_b1, ts->r_b1); */
-/*     delay_duration_a = interval_correct_overflow(ts->t_a1, ts->r_a1); */
-
-/*     drift_offset_int = relative_drift_offset * (float) round_duration_b - relative_drift_offset * (float) delay_duration_a; */
-/*     two_tof_int = (int64_t)round_duration_b - (int64_t)delay_duration_a + drift_offset_int; */
-
-/*     /\* return ((float)two_tof_int) * 0.5; *\/ */
-/*     return (two_tof_int / 2); */
-/* } */
-
 int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
-    int64_t initiator_roundtrip, initiator_reply, replier_roundtrip, replier_reply;
-    
-    initiator_roundtrip = interval_correct_overflow(ts->r_a1,  ts->t_a1);
-    initiator_reply     = interval_correct_overflow(ts->t_a2,  ts->r_a1);
-    replier_roundtrip   = interval_correct_overflow(ts->r_b2,  ts->t_b1);
-    replier_reply       = interval_correct_overflow(ts->t_b1,  ts->r_b1);
+    static float relative_drift_offset;
+    static uint64_t other_duration, own_duration;
+    static uint64_t round_duration_a, delay_duration_b;
+    static int64_t drift_offset_int, two_tof_int;
 
-    return (int32_t)(( ((int64_t) initiator_roundtrip * replier_roundtrip)
-            - ((int64_t) initiator_reply * replier_reply))
-        /
-        ((int64_t) initiator_roundtrip
-            +  replier_roundtrip
-            +  initiator_reply
-            +  replier_reply));
+    own_duration   = interval_correct_overflow(ts->t_a2, ts->t_a1);
+    other_duration = interval_correct_overflow(ts->r_b2, ts->r_b1);
+
+    // factor determining whether B's clock runs faster or slower measured from the perspective of our clock
+    // a positive factor here means that the clock runs faster than ours
+    relative_drift_offset = (float)((int64_t)own_duration-(int64_t)other_duration) / (float)(other_duration);
+
+    round_duration_a = interval_correct_overflow( ts->r_a1, ts->t_a1);
+    delay_duration_b = interval_correct_overflow(ts->t_b1, ts->r_b1);
+
+    drift_offset_int = -relative_drift_offset * (float) delay_duration_b;
+    two_tof_int = (int64_t)round_duration_a - (int64_t)delay_duration_b + drift_offset_int;
+
+    /* return ((float)two_tof_int) * 0.5; */
+    return (two_tof_int / 2);
 }
+
+/* int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) { */
+/*     int64_t initiator_roundtrip, initiator_reply, replier_roundtrip, replier_reply; */
+    
+/*     initiator_roundtrip = interval_correct_overflow(ts->r_a1,  ts->t_a1); */
+/*     initiator_reply     = interval_correct_overflow(ts->t_a2,  ts->r_a1); */
+/*     replier_roundtrip   = interval_correct_overflow(ts->r_b2,  ts->t_b1); */
+/*     replier_reply       = interval_correct_overflow(ts->t_b1,  ts->r_b1); */
+
+/*     return (int32_t)(( ((int64_t) initiator_roundtrip * replier_roundtrip) */
+/*             - ((int64_t) initiator_reply * replier_reply)) */
+/*         / */
+/*         ((int64_t) initiator_roundtrip */
+/*             +  replier_roundtrip */
+/*             +  initiator_reply */
+/*             +  replier_reply)); */
+/* } */
 
 /*---------------------------------------------------------------------------*/
 /**

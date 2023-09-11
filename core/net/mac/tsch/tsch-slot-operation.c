@@ -1731,8 +1731,6 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
     NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
   }
 
-  mtm_handle_slot_end(current_link->timeslot);
-
   TSCH_DEBUG_TX_EVENT();
   // printf("tsch_tx_prop_slot\n");
 
@@ -2251,7 +2249,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
           frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
 
-          /* printf("-------Got packet from %u-------\n", source_address.u8[LINKADDR_SIZE-1]); */
+          /* printf("-G %u-\n", source_address.u8[LINKADDR_SIZE-1]); */
 
       
           num_rx_timestamps = 0;
@@ -2262,13 +2260,11 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
               uint8_t neighbor = source_address.u8[LINKADDR_SIZE-1];
               uint8_t timeslot_offset = current_link->timeslot;
               add_to_direct_observed_rx_to_queue(timestamp_rx_A, neighbor, timeslot_offset);
-              add_mtm_reception_timestamp(neighbor, &tsch_current_asn,  timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
+              add_mtm_reception_timestamp(neighbor, &tsch_current_asn, timeslot_offset, timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
           } else {
               printf("mtm parse failed\n");
           }
-
-
-      
+          
           _PRINTF("--------------Finished----------------\n");
 
       } else {
@@ -2277,9 +2273,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
       tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);      
   }
-
-  // if this is the last ranging timeslot execute end of round handler
-  mtm_handle_slot_end(current_link->timeslot);
 
   #if TSCH_SLEEP
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);

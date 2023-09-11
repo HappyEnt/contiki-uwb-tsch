@@ -36,10 +36,17 @@
  * \author Simon Duquennoy <simonduq@sics.se>
  */
 
+#include "apps/drand/drand.h"
+#include "apps/rand-sched/rand-sched.h"
 #include "contiki.h"
 #include "linkaddr.h"
 #include "node-id.h"
 #include "project-conf.h"
+#include "tsch-schedule.h"
+#include "dev/serial-line.h"
+
+#include "mtm_control.h"
+#include <stdint.h>
 
 #define LOC_WITH_RPL 0
 #if LOC_WITH_RPL
@@ -91,6 +98,8 @@ broadcast_recv(struct broadcast_conn *c, const linkaddr_t *from)
 
 static const struct broadcast_callbacks broadcast_call = {broadcast_recv};
 static struct broadcast_conn broadcast;
+
+static uint8_t node_anchor_timeslot;
 
 #endif
 
@@ -215,12 +224,29 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
     }
 }
 
+void uart_write_link_addr() {
+    char buffer[20];
+    int length = snprintf(buffer, 20, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+
+    for (int i = 0; i < length; i++) {
+        uart0_writeb(buffer[i]);
+    }
+}
+
 void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
     // use uart0_writeb(char byte) to write range
     char buffer[30];
 
     int length = snprintf(buffer, 30, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist));
 
+    for (int i = 0; i < length; i++) {
+        uart0_writeb(buffer[i]);
+    }
+}
+
+void uart_net_status() {
+    char buffer[20];
+    int length = snprintf(buffer, 20, "ass, ts %u\n", node_anchor_timeslot);
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
     }
@@ -239,7 +265,7 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
     /* receive a new propagation time measurement */
     if(ev == PROCESS_EVENT_MSG) {
         m = (struct distance_measurement *) data;
-        
+#if WITH_UART_OUTPUT_RANGE
         float dist = time_to_dist(m->time);
         if(m->type == TWR) {
             ranging_addr_t addr_short = m->addr_B;
@@ -248,6 +274,7 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
             /* printf("TDOA between %u and %u is %d\n", m->addr_A, m->addr_B, m->time); */
             output_tdoa_via_serial(m->addr_A, m->addr_B, dist);
         }
+#endif
     }
   }
 
@@ -269,13 +296,24 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
 /*     NETSTACK_MAC.on();     */
 /* } */
 
+static void drand_timeslot_callback(uint8_t timeslot) {
+    printf("got timeslot %u\n", timeslot);
+
+    // install tx slot at the timeslot that we got from drand, note that timeslot 0 is our global shared slot, so we increase the timeslot by one
+    struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
+    struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, timeslot+1);
+    l->link_options = LINK_OPTION_TX;
+
+    node_anchor_timeslot = timeslot;
+}
+
 void node_set_mobile() {
     printf("setting node as mobile\n");
     #if LOC_WITH_RPL
     rpl_set_mode(RPL_MODE_LEAF); // node is reachable, but does not forward packets for others
     #endif
     net_init(0);
-    mtm_init(0);
+    mtm_init();
 }
 
 void node_set_anchor() {
@@ -284,10 +322,11 @@ void node_set_anchor() {
     rpl_set_mode(RPL_MODE_MESH);
     #endif
     net_init(0);
-    mtm_init(0);
-    mtm_set_node_anchor(true);
+    mtm_init();
 
-    drand_init(32);
+    /* drand_set_timeslot_callback(drand_timeslot_callback); */
+    /* drand_init(15); */
+    rand_sched_init(3);
 }
 
 void node_set_root() {
@@ -305,10 +344,12 @@ void node_set_root() {
     #endif
 
     net_init(1);
-    mtm_init(1);
-    mtm_set_node_anchor(true);
-
-    drand_init(32);
+    mtm_init();
+    
+    rand_sched_init(3);
+    
+    /* drand_set_timeslot_callback(drand_timeslot_callback); */
+    /* drand_init(15); */
 }
 
 void turn_on_led_for_role(enum node_role role) {
@@ -362,7 +403,7 @@ PROCESS_THREAD(node_process, ev, data)
   SENSORS_ACTIVATE(button_sensor);
 
   etimer_set(&node_role_timer, CLOCK_SECOND*10);
-  etimer_set(&network_status_timer, CLOCK_SECOND);
+  etimer_set(&network_status_timer, CLOCK_SECOND*4);
 
 #if WITH_LOC_RIME
   broadcast_open(&broadcast, 129, &broadcast_call);  
@@ -377,6 +418,7 @@ PROCESS_THREAD(node_process, ev, data)
 
       PROCESS_WAIT_EVENT_UNTIL(
           (ev == sensors_event && data == &button_sensor)
+          || (ev == serial_line_event_message)
           || etimer_expired(&et) || etimer_expired(&node_role_timer)
           || etimer_expired(&network_status_timer)
           || etimer_expired(&broadcast_timer)
@@ -431,21 +473,34 @@ PROCESS_THREAD(node_process, ev, data)
           /* printf("\n"); */
           /* print_network_status(); */
           /* printf("\n");               */
+          uart_write_link_addr();
           etimer_reset(&network_status_timer);
       }
 
-    // if tsch_is_associated add for each neighbor a ranging slot
-      if(tsch_is_associated) {
-          /* rpl_print_neighbor_list(); */
-          leds_toggle(LEDS_3);
-          /* print_network_status(); */
+      if(ev == serial_line_event_message) {
+          char *serial_data = (char *)data;
+          printf("received line: %s\n", serial_data);
 
-          if (skip_rounds > 5) {
-              mtm_update_schedule();
-          } else {
-              skip_rounds++;            
+          if(serial_data[0] == 't') {
+              // read number, skip one space
+              int timeslot;
+              sscanf(serial_data, "t %d", &timeslot);
+
+              if(timeslot > UINT8_MAX || timeslot < 0) {
+                  printf("invalid timeslot\n");
+              }
+              take_timeslot((uint8_t) timeslot);
           }
 
+          if(serial_data[0] == 'x') {
+              // setting tx power
+          }
+      }
+
+      // if tsch_is_associated add for each neighbor a ranging slot
+      if(tsch_is_associated) {
+          leds_toggle(LEDS_3);
+          
 #if WITH_LOC_RIME
           if(etimer_expired(&broadcast_timer)) {
               /* printf("broadcasting\n"); */
