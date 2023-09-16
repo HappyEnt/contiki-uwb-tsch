@@ -2151,6 +2151,8 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
      printf("MTM: TX failed: 2\n");
   }
 
+  mtm_slot_end_handler(current_link->timeslot);
+
   /* printf("packet length: %d\n", packet_len); */
 
   TSCH_DEBUG_TX_EVENT();
@@ -2273,6 +2275,8 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
       tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);      
   }
+
+  mtm_slot_end_handler(current_link->timeslot);
 
   #if TSCH_SLEEP
     NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_SLEEP);

@@ -10,6 +10,13 @@ from iotlabaggregator.serial import SerialAggregator
 neighbor_map = {}
 identifier_mac_addr_mapping = {}
 ranging_timeslot_mapping = {}
+short_addr_mapping = {}
+devaddr1_mapping = {}
+
+overall_measurements = {}
+measurement_count = {}
+
+associated = {}
 
 def read_line(identifier, line):
     # print("{}: {}".format(identifier, line))
@@ -18,13 +25,45 @@ def read_line(identifier, line):
     if line.startswith("dpnl"):
         if identifier in identifier_mac_addr_mapping:
             neighbor_map[identifier_mac_addr_mapping[identifier]] = [int(i) for i in line.split()[1:]]
-            print(neighbor_map)
+            # print(neighbor_map)
 
     # if line starts with TA, write out linkaddr, line looks like TA, %u, %u  whereby %u, %u are the high and low byte of the address respectively
     if line.startswith("TA"):
         identifier_mac_addr_mapping[identifier] = int(line.split()[-1])
-        print(identifier_mac_addr_mapping)
+        short_addr_mapping[identifier] = [int(line.split()[-2].replace(',', '')), int(line.split()[-1])]
+        # print(identifier_mac_addr_mapping)
+
+    if line.startswith("devaddr1"):
+        devaddr1_mapping[identifier] = int(line.split()[-1])
+
+
+    # time slot mapping
+    if line.startswith("ts"):
+        ranging_timeslot_mapping[identifier] = int(line.split()[-1])
+
+    if line.startswith("tschass"):
+        associated[identifier] = int(line.split()[-1])
         
+    
+
+    # TW, 218,8.75
+    if line.startswith("TW"):
+        if identifier in identifier_mac_addr_mapping:
+            our_mac = int(identifier_mac_addr_mapping[identifier])
+            other_mac = int(line.split(',')[-2])
+            measurement = float(line.split(',')[-1])
+            if not our_mac in overall_measurements:
+                overall_measurements[our_mac] = {}
+                measurement_count[our_mac] = {}
+
+            if not other_mac in overall_measurements[our_mac]:
+                overall_measurements[our_mac][other_mac] = []
+                measurement_count[our_mac][other_mac] = 0
+
+            overall_measurements[our_mac][other_mac].append(measurement)
+            measurement_count[our_mac][other_mac] += 1
+            
+
 def main():
     """ Launch serial aggregator.
     """
@@ -39,8 +78,16 @@ def main():
                 # send 't' on all serial links
                 # if you want to specify a list of nodes use
                 # aggregator.send_nodes([m3-<id1>, m3-<id2>], 't')
-                aggregator.broadcast("t")
-                time.sleep(2)
+                # aggregator.broadcast("t")
+                # time.sleep(2)
+                time.sleep(10)
+                print(neighbor_map)
+                print(devaddr1_mapping)
+                # print(identifier_mac_addr_mapping)
+                # print(short_addr_mapping)
+                print(measurement_count)
+                print(associated)
+                           
             except KeyboardInterrupt:
                 print("Interrupted by user ...")
 
@@ -50,6 +97,12 @@ def main():
                     
                 with open("identifier_mac_addr_mapping.txt", "w") as f:
                     f.write(str(identifier_mac_addr_mapping))
+
+                with open("devaddr1_mapping.txt", "w") as f:
+                    f.write(str(devaddr1_mapping))
+
+                with open("measurements.txt", "w") as f:
+                    f.write(str(overall_measurements))
                     
                 break
 

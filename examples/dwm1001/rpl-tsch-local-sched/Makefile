@@ -16,6 +16,10 @@ ifeq ($(MAKE_WITH_REDUCED_RANGE),1)
 CFLAGS += -DPROJECT_WITH_REDUCED_RANGE=1
 endif
 
+ifeq ($(MAKE_WITH_UART_OUTPUT_RANGE),1)
+CFLAGS += -DWITH_UART_OUTPUT_RANGE=1 # only output range in this case for now
+endif
+
 # LILLE CONFIG
 ifeq ($(MAKE_FOR_LILLE),1)
 NRF52_RTIMER_USE_HFCLK=1
@@ -33,7 +37,6 @@ ENABLE_SEGGER_RTT=1
 PRINTF_OVER_RTT=1
 NRF_LOG_OVER_RTT=1
 PROJECT_SOURCEFILES += nodes.c
-CFLAGS += -DWITH_UART_OUTPUT_RANGE=1 # only output range in this case for now
 endif
 
 MODULES += core/net/mac/tsch

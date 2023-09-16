@@ -166,8 +166,11 @@
 #define UWB_TX_REDUCED_RANGE 1
 #endif
 
-#define TSCH_CONF_EB_PERIOD (2*CLOCK_SECOND) // default 16
-#define TSCH_CONF_MAX_EB_PERIOD (8*CLOCK_SECOND) //default 50
+// Since we don't do timesync on ranging packets yet,
+// and we also wan't to have as short timeslots as possible
+// we shorten the beacon periods as fast as possible
+#define TSCH_CONF_EB_PERIOD (CLOCK_SECOND) // default 16
+#define TSCH_CONF_MAX_EB_PERIOD (CLOCK_SECOND) //default 50
 #define TSCH_CONF_HW_FRAME_FILTERING    0
 // if not ORCHESTRA
 #if !(WITH_ORCHESTRA)

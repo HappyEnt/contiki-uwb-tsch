@@ -147,6 +147,7 @@ MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MT
 static uint64_t most_recent_tx_timestamp;
 static uint8_t round_counter;
 static uint8_t our_tx_timeslot;
+static uint8_t round_end_timeslot;
 // a simple monotic counter which is used to prevent timestamp misassociation in case of packet drops
 
 // this will be used to return a array of timestamps that we read from the user
@@ -265,12 +266,12 @@ void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
 
   if(n == NULL) {
         // create new neighbor
-        n = memb_alloc(&mtm_prop_neighbor_memb);
-        if (n != NULL) {
-            n->neighbor_addr = node;
-            n->total_found_ours_counter = 0;
-            list_add(ranging_neighbor_list, n);
-        }
+      n = memb_alloc(&mtm_prop_neighbor_memb);
+      if (n != NULL) {
+          n->neighbor_addr = node;
+          n->total_found_ours_counter = 0;
+          list_add(ranging_neighbor_list, n);
+      }
   }
 
   if (n != NULL) {
@@ -281,9 +282,20 @@ void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
   }
 }
 
+// Our implementation assumes there is just one ranging round per slotframe. Therefore
+// we simply update the round counter at the end of the slotframe. We might want to change
+// this is the future, as it might be useful to have many ranging rounds during a slotframe.
+void mtm_slot_end_handler(uint16_t timeslot) {
+    if(timeslot == round_end_timeslot) {
+        round_counter++;
+    }
+}
 
-// TODO move outa here
-void mtm_init() {
+
+// We require that the upper-layer marks which timeslot marks the round end
+// see above comment why this might not be the best idea
+void mtm_set_round_end(uint16_t timeslot) {
+    round_end_timeslot = timeslot;
     round_counter = 0;
 }
 
@@ -349,6 +361,7 @@ void add_mtm_reception_timestamp(
         n = memb_alloc(&mtm_prop_neighbor_memb);
         if (n != NULL) {
             n->neighbor_addr =  neighbor_addr;
+            n->total_found_ours_counter = 0;
             init_ds_twr_struct(&n->ts);
             list_add(ranging_neighbor_list, n);
         } else {
@@ -410,7 +423,6 @@ void add_mtm_reception_timestamp(
 
         // here we do the handling in case we found A in the list as initator
         if (pas_tdoa->A_addr == m_addr) {
-            
             pas_tdoa->most_recent_tx_A = tx_timestamp_B;
             pas_tdoa->rx_round_counter_L1 = round_counter;
             pas_tdoa->rx_timeslot_L1 = timeslot;

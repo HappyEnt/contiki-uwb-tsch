@@ -64,6 +64,8 @@
 #define PRINTF(...) printf(__VA_ARGS__)
 /* #endif */
 
+#define LOG_LLU_MARK "0x%08x%08x"
+#define LOG_LLU(bigint) (uint32_t)(((bigint) >> 32)), (uint32_t)((bigint) & 0xFFFFFFFF)
 
 #include "lib/random.h"
 #include "lib/list.h"
@@ -74,12 +76,15 @@ PROCESS(rand_sched_process, "RANDSCHED");
 
 #define RAND_SCHED_MAX_NEIGHBORS 40
 
+#define MAX_LAST_SEEN_INTERVAL 2*CLOCK_SECOND
+
 static struct etimer rand_schedule_phase_timer;
-static struct etimer decision_evaluation_timer;
+/* static struct etimer decision_evaluation_timer; */
+static struct etimer initial_wait_timer;
 
 static struct neighbor_discovery_conn neighbor_discovery;
 
-#define MTM_ROUND_START_OFFSET 0
+#define MTM_START_SLOT 2
 
 // create memb block for occupancy map
 
@@ -113,6 +118,8 @@ LIST(direct_neighbor_list);
 MEMB(direct_neighbor_memb, struct drand_neighbor_state, RAND_SCHED_MAX_NEIGHBORS);
 
 static enum mtm_node_role mtm_current_node_role = MTM_PASSIVE;
+
+
 
 static void discovery_recv(struct neighbor_discovery_conn *c,
     const linkaddr_t *from, uint16_t val) {
@@ -158,11 +165,27 @@ static void discovery_sent(struct neighbor_discovery_conn *c) {
 
 static const struct neighbor_discovery_callbacks neighbor_discovery_calls = { .recv = discovery_recv, .sent = discovery_sent };
 
+
+
+static void sched_neighbor_discovery_start() {
+  neighbor_discovery_open(&neighbor_discovery,
+      42,
+      CLOCK_SECOND/2,
+      CLOCK_SECOND/8,
+      CLOCK_SECOND*2,
+      &neighbor_discovery_calls);
+  neighbor_discovery_start(&neighbor_discovery, 0);
+}
+
+static void sched_neighbor_discovery_stop() {
+    neighbor_discovery_close(&neighbor_discovery);    
+}
+
 void rand_sched_init(uint8_t max_mtm_slots) {
 
     node_state.max_slots = max_mtm_slots;
     
-    struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, node_state.max_slots + MTM_ROUND_START_OFFSET + 1);
+    struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, node_state.max_slots + MTM_ROUND_START);
     tsch_schedule_add_link(
         sf_eb,
         LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
@@ -170,9 +193,17 @@ void rand_sched_init(uint8_t max_mtm_slots) {
         &tsch_broadcast_address,
         0,
         0);
+    
+    tsch_schedule_add_link(
+        sf_eb,
+        LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
+        LINK_TYPE_ADVERTISING_ONLY,
+        &tsch_broadcast_address,
+        1,
+        0)    
 
     // initialize all other links as RX PROP MTM
-    for(int i = 1 + MTM_ROUND_START_OFFSET; i < node_state.max_slots+1; i++) {
+    for(int i = MTM_START_SLOT; i < MTM_START_SLOT + node_state.max_slots; i++) {
         tsch_schedule_add_link(
             sf_eb,
             LINK_OPTION_RX,
@@ -185,14 +216,52 @@ void rand_sched_init(uint8_t max_mtm_slots) {
     process_start(&rand_sched_process, NULL);
 }
 
+/* static uint8_t rule_enough_neighbors(uint8_t min_neighbors) { */
+/*     // if we don't have enough neighbors (as measured by our mtm table) we don't extend */
+
+/*     struct mtm_neighbor *n = NULL; */
+/*     uint8_t num_neighbors = 0; */
+    
+/*     for (n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) { */
+/*         if((clock_time() - n->last_observed) > CLOCK_SECOND*2) { */
+/*             continue; */
+/*         } */
+/*         num_neighbors++; */
+/*     } */
+    
+/*     return num_neighbors >= min_neighbors; */
+/* } */
+
+/* static uint8_t rule_maximum_direct_neighbors(uint8_t max_capacity) { */
+/*     struct mtm_neighbor *n = NULL; */
+/*     uint8_t num_neighbors = 0; */
+    
+/*     for (n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) { */
+/*         if((clock_time() - n->last_observed) > CLOCK_SECOND*2) { */
+/*             continue; */
+/*         } */
+/*         num_neighbors++; */
+/*     } */
+    
+/*     return num_neighbors <= max_capacity; */
+/* } */
+
+/* static uint8_T rule_neighbor_capacity(uint8_t max_capacity) { */
+/*     // if we have too many neighbors (as measured by our mtm table) we don't extend */
+/* } */
+
 // returns a free timeslot, or 0 if no free timeslot exists.  Note that timeslot 0 is always our
 // shared timeslot, so it may never be associated for mtm usage
-static uint8_t uniform_pick_free_slot() {
+static uint8_t choose_free_timeslot() {
     // pick randomly free slot from occupied_slots
-    uint8_t occupied_slots[node_state.max_slots+1];
+    uint8_t occupied_slots[node_state.max_slots+MTM_ROUND_START];
 
     memset(occupied_slots, 0, sizeof(occupied_slots));
-    occupied_slots[0] = 1; // timeslot 0 is always our global shared timeslot
+
+    // mark all timeslots below MTM_ROUND_START as occupied
+    for (uint8_t i = 0; i < MTM_ROUND_START; i++) {
+        occupied_slots[i] = 1;
+    }
     
     /* // iterate over tsch_prop_get_neighbor_list(); */
     struct mtm_neighbor *n = NULL;
@@ -205,13 +274,13 @@ static uint8_t uniform_pick_free_slot() {
 
     // print occupancy map
     printf("occupancy map: ");
-    for (uint8_t i = 0; i < node_state.max_slots+1; i++) {
+    for (uint8_t i = 0; i < node_state.max_slots+MTM_ROUND_START; i++) {
         printf("%d", occupied_slots[i]);
     }
     printf("\n");
 
     uint8_t free_slot_count = 0;
-    for (uint8_t i = 0; i < node_state.max_slots+1; i++) {
+    for (uint8_t i = 0; i < node_state.max_slots+MTM_ROUND_START; i++) {
         if (occupied_slots[i] == 0) {
             free_slot_count++;
         }
@@ -226,7 +295,7 @@ static uint8_t uniform_pick_free_slot() {
 
     // return slot number
     uint8_t free_slot_number = 0;
-    for (uint8_t i = 0; i < node_state.max_slots+1; i++) {
+    for (uint8_t i = 0; i < node_state.max_slots+MTM_ROUND_START; i++) {
         if (occupied_slots[i] == 0) {
             if (free_slot_number == random_number) {
                 return i;
@@ -262,7 +331,7 @@ static uint8_t check_have_timeslot() {
 
 static void handle_won_lottery() {
     // uniformly pick timeslot
-    uint8_t timeslot = uniform_pick_free_slot();
+    uint8_t timeslot = choose_free_timeslot();
     if(timeslot) {
         printf("Picked timeslot %d\n", timeslot);
             struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
@@ -289,7 +358,7 @@ static void backoff_from_decision(uint8_t timeslot) {
         }
         /* tsch_release_lock(); */
     /* } */
-    neighbor_discovery_set_val(&neighbor_discovery, 0);
+
 }
 
 
@@ -304,7 +373,7 @@ static uint8_t good_decision(uint8_t timeslot) {
     for(n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) {
         printf("neighbor %u, timeslot %u\n", n->neighbor_addr, n->observed_timeslot);
         // outdated neighbor entries should not influence our decision
-        if((clock_time() - n->last_observed) > CLOCK_SECOND) {
+        if((clock_time() - n->last_observed) > CLOCK_SECOND*2) {
             continue;
         }
 
@@ -315,27 +384,27 @@ static uint8_t good_decision(uint8_t timeslot) {
         }
     }
 
-    if(collisions > 0) {
+    if(collisions > 10) {
         printf("We had %u collisions\n", collisions);
         return 0;
     }
-    
+
 
     // search matching entry in our rand-sched neighbor discovery service
     struct drand_neighbor_state *r = NULL;
     for(r = list_head(direct_neighbor_list); r != NULL; r = list_item_next(r)) {
         
-        if((clock_time() - r->last_seen) > CLOCK_SECOND*2) {
+        if((clock_time() - r->last_seen) > CLOCK_SECOND*10) {
             // probably outdated entry
             printf("long time no see, so we no care\n");
             continue;
         }
 
-        if(!r->has_timeslot) {
-            // probably outdated entry
-            printf("no timeslot, so we no care\n");
-            continue;
-        }
+        /* if(!r->has_timeslot) { */
+        /*     // probably outdated entry */
+        /*     printf("no timeslot, so we no care\n"); */
+        /*     continue; */
+        /* } */
         
         // search matching neighbor entry in prop neighbor table
         struct mtm_neighbor *n = NULL;
@@ -351,14 +420,15 @@ static uint8_t good_decision(uint8_t timeslot) {
         if (n == NULL) {
             printf("no tsch prop entry found for %u\n", r->neighbor_addr.u8[LINKADDR_SIZE-1]);
             return 0;
+            /* continue; */
         }
         
-        uint64_t new_since_last_check = r->prev_total_found_ours - n->total_found_ours_counter;
+        uint64_t new_since_last_check = n->total_found_ours_counter - r->prev_total_found_ours;
         r->prev_total_found_ours = n->total_found_ours_counter;
 
         // TODO should be calculated dynamically instead of being hardcoded
-        if (new_since_last_check < 5) {
-            printf("only %u new since last check\n", (uint32_t) new_since_last_check);
+        printf(LOG_LLU_MARK " new since last check\n",  LOG_LLU(new_since_last_check));
+        if (new_since_last_check < 3) {
             return 0;
         }
     }
@@ -503,9 +573,9 @@ static void print_rand_sched_status() {
     printf("\n");
 
     uint8_t timeslot = check_have_timeslot();
-    if(timeslot) {
-        printf("ts %u\n", timeslot);
-    }
+    /* if(timeslot) { */
+    printf("ts %u\n", timeslot);
+    /* } */
 }
 
 PROCESS_THREAD(rand_sched_process, ev, data)
@@ -517,44 +587,50 @@ PROCESS_THREAD(rand_sched_process, ev, data)
   printf("starting rand_sched_process\n");
   
   /* etimer_set(&neighbor_discovery_phase_timer, CLOCK_SECOND * 40); */
-  etimer_set(&rand_schedule_phase_timer, CLOCK_SECOND/1); // every 250ms make a scheduling decision
-  etimer_set(&decision_evaluation_timer, CLOCK_SECOND*4); // every 250ms make a scheduling decision  
 
-  neighbor_discovery_open(&neighbor_discovery,
-      42,
-      CLOCK_SECOND/2,
-      CLOCK_SECOND/8,
-      CLOCK_SECOND*2,
-      &neighbor_discovery_calls);
-  neighbor_discovery_start(&neighbor_discovery, 0);
+  etimer_set(&initial_wait_timer, CLOCK_SECOND * 10); // wait 10 seconds before starting
+  /* etimer_set(&decision_evaluation_timer, CLOCK_SECOND/2); // every 250ms make a scheduling decision   */
 
+  PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&initial_wait_timer));
+  
+  etimer_set(&rand_schedule_phase_timer, CLOCK_SECOND/2); // every 250ms make a scheduling decision
+  
   while(1) {
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&rand_schedule_phase_timer)
-          || etimer_expired(&decision_evaluation_timer)
+          /* || etimer_expired(&decision_evaluation_timer) */
           );
 
-      if(etimer_expired(&rand_schedule_phase_timer) && tsch_is_associated) {
+      if(etimer_expired(&rand_schedule_phase_timer)) {
           // play the lottery
-          uint8_t our_timeslot = check_have_timeslot();
-          print_rand_sched_status();
+          if(tsch_is_associated) {
+              uint8_t our_timeslot = check_have_timeslot();
+              print_rand_sched_status();
           
-          if(!our_timeslot && play_lottery()) {
-              printf("Won lottery. Choosing free slot\n");
-              handle_won_lottery();
+              if(!our_timeslot && play_lottery()) {
+                  printf("Won lottery. Choosing free slot\n");
+                  handle_won_lottery();
+                  sched_neighbor_discovery_start();
+              } else {
+                  if(!good_decision(our_timeslot)) {
+                      printf("Bad decision. Backing off\n");
+                      backoff_from_decision(our_timeslot);
+                      
+                      sched_neighbor_discovery_stop();
+                      neighbor_discovery_set_val(&neighbor_discovery, 0);                      
+                  }
+              }
           }
           
-          etimer_reset(&rand_schedule_phase_timer);          
+          etimer_reset(&rand_schedule_phase_timer);                          
       }
+
       
-      if(etimer_expired(&decision_evaluation_timer)) {
+      /* if(etimer_expired(&decision_evaluation_timer)) { */
           uint8_t our_timeslot = check_have_timeslot();
-          if(our_timeslot && !good_decision(our_timeslot)) {
-              printf("Bad decision. Backing off\n");
-              backoff_from_decision(our_timeslot);
-          }
+ 
           
-          etimer_reset(&decision_evaluation_timer);
-      }
+          /* etimer_reset(&decision_evaluation_timer); */
+      /* } */
   }
 
   PROCESS_END();

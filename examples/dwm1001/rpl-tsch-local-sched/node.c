@@ -215,9 +215,9 @@ static void print_configuration() {
 
 void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
     // use uart0_writeb(char byte) to write range
-    char buffer[20];
+    char buffer[40];
 
-    int length = snprintf(buffer, 20, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range ) );
+    int length = snprintf(buffer, 40, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range ) );
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -225,8 +225,8 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
 }
 
 void uart_write_link_addr() {
-    char buffer[20];
-    int length = snprintf(buffer, 20, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+    char buffer[40];
+    int length = snprintf(buffer, 40, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -235,9 +235,9 @@ void uart_write_link_addr() {
 
 void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
     // use uart0_writeb(char byte) to write range
-    char buffer[30];
+    char buffer[50];
 
-    int length = snprintf(buffer, 30, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist));
+    int length = snprintf(buffer, 50, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -324,9 +324,11 @@ void node_set_anchor() {
     net_init(0);
     mtm_init();
 
+#if WITH_DYNAMIC_SCHEDULING
     /* drand_set_timeslot_callback(drand_timeslot_callback); */
     /* drand_init(15); */
-    rand_sched_init(3);
+    rand_sched_init(10);
+#endif
 }
 
 void node_set_root() {
@@ -346,10 +348,12 @@ void node_set_root() {
     net_init(1);
     mtm_init();
     
-    rand_sched_init(3);
+#if WITH_DYNAMIC_SCHEDULING    
+    rand_sched_init(10);
     
     /* drand_set_timeslot_callback(drand_timeslot_callback); */
     /* drand_init(15); */
+#endif
 }
 
 void turn_on_led_for_role(enum node_role role) {
@@ -438,9 +442,9 @@ PROCESS_THREAD(node_process, ev, data)
           }
       }
 
+
       if (etimer_expired(&node_role_timer) && !anchorChoseRole) {
           enum node_role role = MOBILE;
-          
           if(manual_chose_role) {
               printf("manual role chosen\n");
               role = current_node_role;
@@ -464,7 +468,7 @@ PROCESS_THREAD(node_process, ev, data)
               node_set_root();
               break;
           }
-          }          
+          }
 
           anchorChoseRole = 1;
       }
@@ -500,6 +504,7 @@ PROCESS_THREAD(node_process, ev, data)
       // if tsch_is_associated add for each neighbor a ranging slot
       if(tsch_is_associated) {
           leds_toggle(LEDS_3);
+          printf("tschass 1\n");
           
 #if WITH_LOC_RIME
           if(etimer_expired(&broadcast_timer)) {
@@ -509,7 +514,8 @@ PROCESS_THREAD(node_process, ev, data)
               etimer_set(&broadcast_timer, CLOCK_SECOND * 4 + (random_rand() % (CLOCK_SECOND * 4)));
           }
 #endif
-
+      } else {
+          printf("tschass 0\n");          
       }
 
       if(etimer_expired(&et)) {
