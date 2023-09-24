@@ -60,6 +60,7 @@
 
 #include "dw1000-driver.h"
 #include "dw1000-ranging-bias.h"
+#include "deca_device_api.h"
 #include "tsch-slot-operation.h"
 
 #if TSCH_MTM_LOCALISATION
@@ -103,7 +104,8 @@ struct mtm_pas_tdoa
     // for this we must get a return message from B which was send in the same
     // round as the tx timestamp that we extract from A's message
     uint64_t most_recent_tx_A, rx_timestamp_L1, most_recent_tx_B, rx_timestamp_L2;
-    uint8_t rx_timeslot_L1, rx_timeslot_L2, rx_round_counter_L1, rx_round_counter_L2; // stores in which round and timeslot we did receive the message we identify as initiator message at
+    uint8_t rx_timeslot_L1, rx_timeslot_L2; // stores in which round and timeslot we did receive the message we identify as initiator message at
+    uint64_t rx_round_counter_L1, rx_round_counter_L2;
 
     uint8_t closed_round;
 
@@ -111,13 +113,13 @@ struct mtm_pas_tdoa
     uint64_t r_l1, r_l2, r_l3, r_l4;
 };
 
-int32_t mtm_compute_tdoa(struct mtm_pas_tdoa *ts);
+float mtm_compute_tdoa(struct mtm_pas_tdoa *ts);
 
 #endif
 
 void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n);
 /* float calculate_propagation_time_alternative(struct ds_twr_ts *ts); */
-int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts);
+float calculate_propagation_time_alternative(struct ds_twr_ts *ts);
 
 // in the following we use the value -1 for uninitialized timestamps
 struct mtm_rx_queue_item {
@@ -145,7 +147,7 @@ MEMB(mtm_prop_rx_memb, struct mtm_rx_queue_item, TSCH_MTM_PROP_MAX_NEIGHBORS);
 MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MTM_PROP_MAX_NEIGHBORS);
 
 static uint64_t most_recent_tx_timestamp;
-static uint8_t round_counter;
+static uint64_t round_counter;
 static uint8_t our_tx_timeslot;
 static uint8_t round_end_timeslot;
 // a simple monotic counter which is used to prevent timestamp misassociation in case of packet drops
@@ -159,7 +161,7 @@ list_t tsch_prop_get_neighbor_list() {
 
 // protos
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts);
-void print_ds_twr_timestamps(struct ds_twr_ts *ts);
+void debug_output_ds_twr_timestamps(struct ds_twr_ts *ts, ranging_addr_t neighbor_addr);
 void print_mtm_neighbors();
 void notify_user_process_new_measurement(struct distance_measurement *measurement);
 
@@ -168,7 +170,9 @@ void notify_user_process_new_measurement(struct distance_measurement *measuremen
 // this function expects that the user passes in high_ts the timestamp that is supposed to be the larger value of
 // the given interval.
 static inline int64_t interval_correct_overflow(uint64_t high_ts, uint64_t low_ts) {
-    // cast numbers to int
+
+    /* return (uint64_t)(high_ts - low_ts)&0xFFFFFFFFFF;  */
+// cast numbers to int
     int64_t high_ts_i = (int64_t) high_ts;
     int64_t low_ts_i = (int64_t) low_ts;
     if (high_ts_i < low_ts_i) {
@@ -480,7 +484,7 @@ void add_mtm_reception_timestamp(
 
                 if(pas_tdoa_all_initialized(pas_tdoa)) {
                     // this message closes the round
-                    int32_t tdoa;
+                    float tdoa;
             
                     tdoa = mtm_compute_tdoa(pas_tdoa);
 
@@ -556,16 +560,18 @@ void print_ds_twr_durations(struct ds_twr_ts *ts) {
     _PRINTF("MTM: Replier reply: %d\n", replier_reply);
 }
 
-void print_ds_twr_timestamps(struct ds_twr_ts *ts) {
-    printf("t_a1: " LOG_LLU_MARK "\n", LOG_LLU(ts->t_a1));
-    printf("r_a1: " LOG_LLU_MARK "\n", LOG_LLU(ts->r_a1));
-    printf("t_a2: " LOG_LLU_MARK "\n", LOG_LLU(ts->t_a2));
-    printf("r_a2: " LOG_LLU_MARK "\n", LOG_LLU(ts->r_a2));
-
-    printf("r_b1: " LOG_LLU_MARK "\n", LOG_LLU(ts->r_b1));
-    printf("t_b1: " LOG_LLU_MARK "\n", LOG_LLU(ts->t_b1));
-    printf("r_b2: " LOG_LLU_MARK "\n", LOG_LLU(ts->r_b2));
-    printf("t_b2: " LOG_LLU_MARK "\n", LOG_LLU(ts->t_b2));
+void debug_output_ds_twr_timestamps(struct ds_twr_ts *ts, ranging_addr_t neighbor_addr) {
+    printf("tstx1, ");
+    /* uint64_t t_a1, r_b1, t_b1, r_a1, t_a2, r_b2, t_b2, r_a2;     */
+    printf("%u, ", neighbor_addr);
+    printf("%u:%u, ", (uint32_t)(ts->t_a1 >> 32), (uint32_t)(ts->t_a1));
+    printf("%u:%u, ", (uint32_t)(ts->r_b1 >> 32), (uint32_t)(ts->r_b1));
+    printf("%u:%u, ", (uint32_t)(ts->t_b1 >> 32), (uint32_t)(ts->t_b1));
+    printf("%u:%u, ", (uint32_t)(ts->r_a1 >> 32), (uint32_t)(ts->r_a1));
+    printf("%u:%u, ", (uint32_t)(ts->t_a2 >> 32), (uint32_t)(ts->t_a2));
+    printf("%u:%u ", (uint32_t)(ts->r_b2 >> 32), (uint32_t)(ts->r_b2));
+    
+    printf("\n");
 }
 
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts) {
@@ -604,43 +610,30 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
         return;
     }
 
-    int32_t initiator_roundtrip, initiator_reply, replier_roundtrip, replier_reply;
-
-    /* Finally calculate round trip times */
-
-    /* initiator_roundtrip = interval_correct_overflow(mtm_n->ts.r_a1,  mtm_n->ts.t_a1); */
-    /* initiator_reply = interval_correct_overflow(mtm_n->ts.t_a2, mtm_n->ts.r_a1); */
-    /* replier_roundtrip = interval_correct_overflow(mtm_n->ts.r_b2, mtm_n->ts.t_b1); */
-    /* replier_reply = interval_correct_overflow(mtm_n->ts.t_b1, mtm_n->ts.r_b1); */
-
     /* int32_t prop_time  = compute_prop_time(initiator_roundtrip, initiator_reply, replier_roundtrip, replier_reply); */
-    int32_t prop_time  = calculate_propagation_time_alternative(&(mtm_n->ts));   
+    float prop_time  = calculate_propagation_time_alternative(&(mtm_n->ts));   
     /* float prop_time = calculate_propagation_time_alternative(&(mtm_n->ts)); */
     float range = time_to_dist(prop_time);
+    int32_t carrier_integrator = dwt_readcarrierintegrator();
 
+#if MTM_EVAL_OUTPUT_TS
+    debug_output_ds_twr_timestamps(&mtm_n->ts, mtm_n->neighbor_addr);
+#endif
+    
     // bias correction in centimeters
     /* bias_correction = dw1000_getrangebias(n->last_prop_time.tsch_channel, range); */
     _PRINTF("bias uncorrected range to %u: " NRF_LOG_FLOAT_MARKER "\n", mtm_n->neighbor_addr, NRF_LOG_FLOAT(range));
     _PRINTF("prop time to %u: %d\n", mtm_n->neighbor_addr, prop_time);
     // call into existing methods for passing data to user
 
-    // TODO Added for debugging remove again
-    if (range < -10 || range > 10) {
-#if WITH_UART_OUTPUT_RANGE // we reuse this flag here. This print ooperation is heavy and should only be done when using RTT
-        /* print_ds_twr_timestamps(&mtm_n->ts); */
-        /* print_ds_twr_durations(&mtm_n->ts); */
-#endif
-    }
-    
     // update stored measurement for node
     mtm_n->last_measurement.type = TWR;
     mtm_n->last_measurement.addr_A = linkaddr_node_addr.u8[LINKADDR_SIZE-1];
     mtm_n->last_measurement.addr_B = mtm_n->neighbor_addr;
     mtm_n->last_measurement.time = prop_time;
-    
-    notify_user_process_new_measurement(&mtm_n->last_measurement);
+    mtm_n->last_measurement.freq_offset = carrier_integrator;
 
-    /* update_neighbor_prop_time(n, prop_time, asn, UINT8_MAX); */
+    notify_user_process_new_measurement(&mtm_n->last_measurement);
 }
 
 // We put functionality regarding package creation here for now. This allows the measurement_list to
@@ -827,11 +820,11 @@ int32_t fixed_precision_divide(int32_t a, int32_t b) {
     return (int32_t)(tmp / b);
 }
 
-int32_t mtm_compute_tdoa(struct mtm_pas_tdoa *ts) {
-    int64_t M_a, M_b, R_a, D_a, R_b, D_b, ToF_ab, TD;
+float mtm_compute_tdoa(struct mtm_pas_tdoa *ts) {
+    int64_t M_a, M_b, R_a, D_a, R_b, D_b;
     
     // we are in the lucky position that we have a fpu, so we will use them instead of fixed precision.
-    double prop_drift_coff;
+    double prop_drift_coff, ToF_ab, TD;
     
     // extract intervals from Message
     M_a = interval_correct_overflow( ts->r_l2 , ts->r_l1 );
@@ -841,27 +834,19 @@ int32_t mtm_compute_tdoa(struct mtm_pas_tdoa *ts) {
     D_a = interval_correct_overflow(ts->ds_ts.t_a2 , ts->ds_ts.r_a1);
     R_b = interval_correct_overflow(ts->ds_ts.r_b2 , ts->ds_ts.t_b1);
     D_b = interval_correct_overflow(ts->ds_ts.t_b1 , ts->ds_ts.r_b1);
-
-    _PRINTF("M_a " LOG_LLU_MARK " M_b " LOG_LLU_MARK " R_a " LOG_LLU_MARK
-           " D_a " LOG_LLU_MARK "\n",
-           LOG_LLU(M_a), LOG_LLU(M_b), LOG_LLU(R_a), LOG_LLU(D_a));
     
     // M_a + M_b and R_a 
     prop_drift_coff = (double)((int64_t)M_a + M_b) / (double)((int64_t)R_a + D_a);
 
     ToF_ab = calculate_propagation_time_alternative(&ts->ds_ts);
 
-    _PRINTF("prop_drift_coff " NRF_LOG_FLOAT_MARKER " ToF_ab %d \n", NRF_LOG_FLOAT((float)prop_drift_coff), ToF_ab);
-
-    TD = prop_drift_coff * (R_a - ToF_ab) - M_a;
-
-    // for loging convert TD to single 32 bit int, it shouuld fit easily if the calculations are right
-    _PRINTF("TD %d\n", (int32_t) TD);
+    /* TD = prop_drift_coff * (R_a - ToF_ab) - M_a; */
+    TD = prop_drift_coff * ((double)R_a - ToF_ab) - (double)M_a;
     
-    return (int32_t) TD;
+    return TD;
 }
 
-float time_to_dist(int32_t tof) {
+float time_to_dist(float tof) {
     return (float)tof * SPEED_OF_LIGHT_M_PER_UWB_TU;
 }
 
@@ -952,8 +937,8 @@ update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time,
 }
 
 
-int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
-    static float relative_drift_offset;
+float calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
+    static double relative_drift_offset;
     static uint64_t other_duration, own_duration;
     static uint64_t round_duration_a, delay_duration_b;
     static int64_t drift_offset_int, two_tof_int;
@@ -963,16 +948,17 @@ int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
 
     // factor determining whether B's clock runs faster or slower measured from the perspective of our clock
     // a positive factor here means that the clock runs faster than ours
-    relative_drift_offset = (float)((int64_t)own_duration-(int64_t)other_duration) / (float)(other_duration);
+    /* relative_drift_offset = (float)((int64_t)own_duration-(int64_t)other_duration) / (float)(other_duration); */
+    relative_drift_offset = (double)((int64_t)own_duration-(int64_t)other_duration) / (double)(other_duration);    
 
     round_duration_a = interval_correct_overflow( ts->r_a1, ts->t_a1);
     delay_duration_b = interval_correct_overflow(ts->t_b1, ts->r_b1);
 
-    drift_offset_int = -relative_drift_offset * (float) delay_duration_b;
+    /* drift_offset_int = -relative_drift_offset * (float) delay_duration_b; */
+    drift_offset_int = -relative_drift_offset * (double) delay_duration_b;    
     two_tof_int = (int64_t)round_duration_a - (int64_t)delay_duration_b + drift_offset_int;
 
-    /* return ((float)two_tof_int) * 0.5; */
-    return (two_tof_int / 2);
+    return ((float)two_tof_int * 0.5);
 }
 
 /* int32_t calculate_propagation_time_alternative(struct ds_twr_ts *ts) { */

@@ -12,7 +12,7 @@ ranging_timeslot_mapping = {}
 short_addr_mapping = {}
 devaddr1_mapping = {}
 associated = {}
-
+raw_timestamps = {}
 distance_measurements = {}
 
 finished = False 
@@ -36,11 +36,31 @@ def read_line(identifier, line):
     if line.startswith("devaddr1"):
         devaddr1_mapping[identifier] = int(line.split()[-1])
 
-    # time slot mapping
-    if line.startswith("ts"):
-        ranging_timeslot_mapping[identifier] = int(line.split()[-1])
+    # read timestamps
+    if line.startswith("tstx1,"):
+        # comma seperated we have 6 entries of the form "%u:%u"
+        # whereby the first number encodes the higher order bytes of a uint64_t
+        # and the second number encodes the lower order bytes of a uint64_t
+        if identifier in identifier_mac_addr_mapping:
+            our_mac = identifier_mac_addr_mapping[identifier]
+            other_mac = int(line.split(',')[1])
+            strgs = line.split(',')[2:]
+            timestamps = list(map(lambda x: int(x.split(':')[0]) << 32 | int(x.split(':')[1]), strgs))
 
-    if line.startswith("tschass"):
+            if not our_mac in raw_timestamps:
+                raw_timestamps[our_mac] = {}
+
+            if not other_mac in raw_timestamps[our_mac]:
+                raw_timestamps[our_mac][other_mac] = []
+
+            raw_timestamps[our_mac][other_mac].append(timestamps)
+        
+        
+    # time slot mapping
+    if line.startswith("ts,"):
+        ranging_timeslot_mapping[identifier] = int(line.split()[-1])
+        
+    if line.startswith("tschass,"):
         associated[identifier] = int(line.split()[-1])
 
     if line.startswith("received line"):
@@ -86,9 +106,11 @@ def main():
     opts.with_a8 = False # redirect a8-m3 serial port
     opts.with_dwm1001 = True # redirect a8-m3 serial port    
     nodes = SerialAggregator.select_nodes(opts)
-    current_distance = 1
+    start_distance = 20
+    current_distance = start_distance
     max_distance = 100
-    target_measurements_per_distance = 400
+    target_measurements_per_distance = 100
+    min_duration = 8
     with SerialAggregator(nodes, line_handler=read_line) as aggregator:
         time.sleep(10)
         while not finished:
@@ -103,7 +125,7 @@ def main():
 
                 print(f"Wait for {wait_duration} seconds")
                 
-                time.sleep(wait_duration)
+                time.sleep(max(min_duration, wait_duration))
                 
                 current_distance += 1
                 
@@ -124,6 +146,9 @@ def main():
 
         with open("distance_measurements.txt", "w") as f:
             f.write(str(distance_measurements))
+
+        with open("raw_timestamps.txt", "w") as f:
+            f.write(str(raw_timestamps))
 
 
 if __name__ == "__main__":

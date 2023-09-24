@@ -156,6 +156,12 @@
 #endif /* WITH_ORCHESTRA */
 
 /*******************************************************/
+/************* Experiment Configuration **************/
+/*******************************************************/
+#define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
+
+
+/*******************************************************/
 /************* Other system configuration **************/
 /*******************************************************/
 
@@ -169,8 +175,8 @@
 // Since we don't do timesync on ranging packets yet,
 // and we also wan't to have as short timeslots as possible
 // we shorten the beacon periods as fast as possible
-#define TSCH_CONF_EB_PERIOD (CLOCK_SECOND) // default 16
-#define TSCH_CONF_MAX_EB_PERIOD (CLOCK_SECOND) //default 50
+#define TSCH_CONF_EB_PERIOD (CLOCK_SECOND/4) // default 16
+#define TSCH_CONF_MAX_EB_PERIOD (CLOCK_SECOND/2) //default 50
 #define TSCH_CONF_HW_FRAME_FILTERING    0
 // if not ORCHESTRA
 #if !(WITH_ORCHESTRA)
@@ -182,7 +188,7 @@
 
 // we need really short timeslot lengths
 /* #undef TSCH_CONF_DEFAULT_TIMESLOT_LENGTH */
-/* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH 2000 */
+/* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH 2500 */
 
 /* #define TSCH_CONF_HW_FRAME_FILTERING    0 */
 /* #define TSCH_SCHEDULE_CONF_WITH_6TISCH_MINIMAL 1 */

@@ -100,10 +100,10 @@ static void print_configuration() {
 
 void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
     // use uart0_writeb(char byte) to write range
-    char buffer[50];
+    char buffer[60];
 
     // we output data in units of cm
-    int length = snprintf(buffer, 50, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range * 100) );
+    int length = snprintf(buffer, 60, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range * 100) );
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -111,8 +111,8 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
 }
 
 void uart_write_link_addr() {
-    char buffer[40];
-    int length = snprintf(buffer, 40, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+    char buffer[50];
+    int length = snprintf(buffer, 50, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -121,9 +121,9 @@ void uart_write_link_addr() {
 
 void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
     // use uart0_writeb(char byte) to write range
-    char buffer[50];
+    char buffer[70];
 
-    int length = snprintf(buffer, 50, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist));
+    int length = snprintf(buffer, 70, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist*100));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -159,9 +159,9 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
   PROCESS_END();
 }
 
-const linkaddr_t node_0_ll = { {  21, 215  } }; //dwm1001-1 */
-const linkaddr_t node_1_ll = { {  23, 206  } }; //dwm1001-2 */
-const linkaddr_t node_2_ll = { {  108, 22  } }; // dwm1001-3 */
+const linkaddr_t node_0_ll = { { 64, 29 } }; //dwm1001-29 */
+const linkaddr_t node_1_ll = { { 66, 33 } }; //dwm1001-33 */
+const linkaddr_t node_2_ll =  { { 89, 26 } }; // dwm1001-26 */
 
 /* const linkaddr_t node_6_ll = { {  61, 196 } }; // dwm1001-7 */
 /* const linkaddr_t node_7_ll = { {  106, 6 } }; // dwm1001-8 */
@@ -191,10 +191,10 @@ PROCESS_THREAD(node_process, ev, data)
             LINK_TYPE_ADVERTISING, &tsch_broadcast_address, 0, 0);  
         if(linkaddr_cmp(&node_0_ll, &linkaddr_node_addr)) {
             printf("=node type 0 initiator=\n");
-            net_init(1);      
             tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 1, 0);
             tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 2, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 3, 0);            
+            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 3, 0);
+            net_init(1);                  
         } else if(linkaddr_cmp(&node_1_ll, &linkaddr_node_addr)) {
             tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 1, 0);
             tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 2, 0);
@@ -246,9 +246,9 @@ PROCESS_THREAD(node_process, ev, data)
       if(tsch_is_associated) {
           leds_toggle(LEDS_3);
 
-          printf("tschass 1\n");
+          printf("tschass, 1\n");
       } else {
-          printf("tschass 0\n");          
+          printf("tschass, 0\n");          
       }
       
       uart_write_link_addr();

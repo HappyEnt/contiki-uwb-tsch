@@ -49,6 +49,11 @@
 #endif /* WITH_SECURITY */
 
 /*******************************************************/
+/************* Experiment Configuration **************/
+/*******************************************************/
+#define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
+
+/*******************************************************/
 /********* Enable RPL non-storing mode *****************/
 /*******************************************************/
 #define LOC_WITH_RPL 0

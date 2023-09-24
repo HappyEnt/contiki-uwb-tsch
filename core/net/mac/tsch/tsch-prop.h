@@ -76,7 +76,8 @@ struct distance_measurement {
     ranging_addr_t addr_A;
     ranging_addr_t addr_B;
     
-    int32_t time;
+    float time;
+    int32_t freq_offset;
 };
 
 // make public for now, should probably later be replaced with a better interface
@@ -133,7 +134,7 @@ list_t tsch_prop_get_neighbor_list();
 // between measurements increases. This would allow us to give a measurement of how outdated or bad
 // the measurement is.
 
-float time_to_dist(int32_t tof);
+float time_to_dist(float tof);
 
 /* tsch_prop_time is defined in tsch-queue.h to avoid loop in declaration. */
 int tsch_packet_create_multiranging_packet(

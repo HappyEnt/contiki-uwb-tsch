@@ -1849,7 +1849,8 @@ dw1000_set_tsch_channel(uint8_t channel) {
   dw_set_preamble_code(dw1000_conf.preamble_code);
 
   dw_lde_repc_config(dw1000_conf.preamble_code, dw1000_conf.data_rate);
-  dw_configure_lde(dw1000_conf.preamble_code);
+
+  dw_configure_lde(dw1000_conf.prf);
 
   dw_set_pac_size(dw1000_conf.pac_size, dw1000_conf.prf);
 

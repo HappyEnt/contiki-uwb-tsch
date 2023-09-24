@@ -93,13 +93,12 @@
 
 #if DW1000_DATA_RATE == DW_DATA_RATE_6800_KBPS
   #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_128
+  /* #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_256 */
   /* UWB_T_SHR = (Preamble lenght + 16) at 6.8 mbps */
   #define UWB_T_SHR                  ((uint16_t) (128+16))
-  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   3000 */
-  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   2500 */
-  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   4000 */
-  #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   5000
-  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH 1500 */
+  /* #define UWB_T_SHR                  ((uint16_t) (256+16)) */
+  #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   2500
+  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   5000 */
 
 #elif DW1000_DATA_RATE == DW_DATA_RATE_850_KBPS
   #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_512
@@ -140,11 +139,11 @@
   /* TSCH channel hopping sequence, define for the UWB, in this case we have only 6 channels */
   /* We avoid to used the TSCH channel 2 and 5 that use physical channel 2 */
   /* #undef TSCH_CONF_DEFAULT_HOPPING_SEQUENCE */
-  #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){3, 7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
-  #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  2
+  /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){3, 7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16 */
+  /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  2 */
 
-  /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16 */
-  /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    1 */
+  #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){3} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
+  #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    1
   
   /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){ 3, 4, 7, 10} */
   /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    4 */
@@ -157,11 +156,16 @@
 
   // #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7}
   // #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){ 3, 7}
-  #define TSCH_CONF_JOIN_HOPPING_SEQUENCE     TSCH_CONF_DEFAULT_HOPPING_SEQUENCE
+  
+// NOTE if we use only a single channel here, the tsch join process won't change channels
+// for some reason this does result in beacons not being received anymore, if the receiver
+// did not receive the beacon directly at turn on
+#define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){3, 7, 11}
 
   // #define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){ 3}
   // #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  6
 
+  #define TSCH_CONF_SLEEP 0
 
 
   /* Chorus Config : */

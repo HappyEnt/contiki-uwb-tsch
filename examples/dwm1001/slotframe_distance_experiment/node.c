@@ -95,6 +95,7 @@ static void print_configuration() {
     LOG_CONFIG_ITEM(TSCH_CONF_EB_PERIOD);
     LOG_CONFIG_ITEM(TSCH_CONF_MAX_EB_PERIOD);
     LOG_CONFIG_ITEM(TSCH_CONF_AUTOSELECT_TIME_SOURCE);
+    LOG_CONFIG_ITEM(TSCH_CONF_SLEEP);    
     LOG_CONFIG_ITEM(LINKADDR_SIZE);
     LOG_CONFIG_ITEM(LOC_WITH_RPL);        
     LOG_CONFIG_ITEM(PACKETBUF_SIZE);
@@ -102,12 +103,12 @@ static void print_configuration() {
     printf(";; SCHEDULE_USED = CUSTOM\n");
 }
 
-void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
+void output_range_via_serial_snprintf(uint8_t addr_short, float range, int32_t freq_offset) {
     // use uart0_writeb(char byte) to write range
     char buffer[50];
 
     // we output data in units of cm
-    int length = snprintf(buffer, 50, "TW, %u, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, current_slot_distance, NRF_LOG_FLOAT( range * 100) );
+    int length = snprintf(buffer, 50, "TW, %u, %u, %d, "NRF_LOG_FLOAT_MARKER "\n", addr_short, current_slot_distance, freq_offset, NRF_LOG_FLOAT( range * 100 ) );
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -116,7 +117,7 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
 
 void uart_write_link_addr() {
     char buffer[40];
-    int length = snprintf(buffer, 40, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+    int length = snprintf(buffer, 50, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -125,9 +126,9 @@ void uart_write_link_addr() {
 
 void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
     // use uart0_writeb(char byte) to write range
-    char buffer[50];
+    char buffer[70];
 
-    int length = snprintf(buffer, 50, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist));
+    int length = snprintf(buffer, 70, "TD, %u, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", current_slot_distance, node1_addr, node2_addr, NRF_LOG_FLOAT(dist * 100));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -151,9 +152,9 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
         float dist = time_to_dist(m->time);
         if(m->type == TWR) {
             ranging_addr_t addr_short = m->addr_B;
-            output_range_via_serial_snprintf(addr_short, dist);
+            int32_t freq_offset = m->freq_offset;
+            output_range_via_serial_snprintf(addr_short, dist, freq_offset);
         } else if (m->type == TDOA) {
-            /* printf("TDOA between %u and %u is %d\n", m->addr_A, m->addr_B, m->time); */
             output_tdoa_via_serial(m->addr_A, m->addr_B, dist);
         }
 #endif
@@ -164,14 +165,18 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
 }
 
 
-
 void slotframe_new_distance_callback(uint8_t new_distance) {
     current_slot_distance = new_distance;
     printf("new slot distance %u\n", new_distance);
 }
 
+#if TESTBED_LILLE
 const linkaddr_t node_0_ll = { {  21, 215  } }; //dwm1001-1 */
 const linkaddr_t node_1_ll = { {  23, 206  } }; //dwm1001-2 */
+#elif TESTBED_TOULOUSE // using our custom linkaddr mapping
+const linkaddr_t node_0_ll = { { 82, 1 } };  //  dwm1001_1 */
+const linkaddr_t node_1_ll = { { 225, 2 } }; //  dwm1001_2 */
+#endif
 
 /* const linkaddr_t node_6_ll = { {  61, 196 } }; // dwm1001-7 */
 /* const linkaddr_t node_7_ll = { {  106, 6 } }; // dwm1001-8 */

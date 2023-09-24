@@ -10,6 +10,13 @@ MAKE_WITH_ORCHESTRA ?= 0 # force Orchestra from command line
 MAKE_WITH_SECURITY ?= 0 # force Security from command line
 PROJECT_SOURCEFILES += slotframe_evaluation_scheduler.c
 
+ifeq ($(MAKE_FOR_LILLE),1)
+CFLAGS += -DTESTBED_LILLE=1
+else ifeq ($(MAKE_FOR_TOULOUSE),1)
+CFLAGS += -DTESTBED_TOULOUSE=1
+PROJECT_SOURCEFILES += toulouse-nodes.c toulouse_linkaddr_mapping.c
+CFLAGS += -DDWM1001_LINKADDR_FROM_FILE=1
+endif
 
 ifeq ($(MAKE_WITH_REDUCED_RANGE),1)
 CFLAGS += -DPROJECT_WITH_REDUCED_RANGE=1

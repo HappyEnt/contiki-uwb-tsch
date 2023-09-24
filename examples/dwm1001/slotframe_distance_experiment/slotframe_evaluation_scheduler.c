@@ -42,6 +42,11 @@ void generate_slotframe_with_distance(uint8_t slotframe_distance) {
     // find slotframe
     // first delete old slotframe
 
+    if (!slotframe_distance) {
+        printf("Slotframe distance must atleast be 1\n");
+        return;
+    }
+
     // we generate a ranging schedule consisting of one initial fixed shared slot and
     // ranging slots with are placed equidistantly
     uint8_t required_slotframe_length = 2 + 2*slotframe_distance;
@@ -60,10 +65,32 @@ void generate_slotframe_with_distance(uint8_t slotframe_distance) {
 
     if (sf_eb != NULL) {
         // initial shared slot
+
+        // this is always present
         tsch_schedule_add_link(sf_eb,
             LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
             LINK_TYPE_ADVERTISING, &tsch_broadcast_address, 0, 0);
-            
+
+
+// interleave some rx slots, to wake up radio
+#define WITH_ADD_ADDITIONAL_SHARED 1
+#if WITH_ADD_ADDITIONAL_SHARED
+        // interleave some more ADVERTISING_ONLY Timeslots in case of long slotframes
+        int amount = (slotframe_distance - 1) > 10 ? 10 : (slotframe_distance - 1);
+        if(amount > 0) {
+            int spacing = (slotframe_distance - 1) / amount;
+
+            for (int i = 0; i < amount; i++) {
+                tsch_schedule_add_link(sf_eb,
+                    LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
+                    LINK_TYPE_ADVERTISING, &tsch_broadcast_address, 1 + i*spacing, 0);
+                tsch_schedule_add_link(sf_eb,
+                    LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
+                    LINK_TYPE_ADVERTISING, &tsch_broadcast_address, slotframe_distance + 1 + i*spacing, 0);
+            }
+        }
+#endif
+
         // first direction
         if(node_role == 0) {
             printf("Setting initiator\n");            
@@ -98,7 +125,7 @@ void generate_slotframe_with_distance(uint8_t slotframe_distance) {
  */
 void slotframe_evaluation_length_scheduler_init(uint8_t max_distance, uint8_t role) {
     max_inter_slot_distance = max_distance;
-    current_slot_distance = 2; // start with two
+    current_slot_distance = 1;
     node_role = role;
 
 
