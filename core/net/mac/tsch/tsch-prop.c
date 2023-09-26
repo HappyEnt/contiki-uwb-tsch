@@ -88,31 +88,6 @@
 // and B taking the responder hole. See paper for more details on this measurement method.
 // with L we denote ourself as the passive listener.
 
-struct mtm_pas_tdoa
-{
-    struct mtm_pas_tdoa *next;
-
-    // For internal mangement we will identify with node A the node that initiated a transfer
-    // and with node B the responder. Off course both nodes take either role, but
-    // to not mix up the timestamps we will always use the same notation.
-    ranging_addr_t A_addr; 
-    ranging_addr_t B_addr;
-
-    struct distance_measurement last_measurement;
-
-    // this information is used to detect when a round was successfully received
-    // for this we must get a return message from B which was send in the same
-    // round as the tx timestamp that we extract from A's message
-    uint64_t most_recent_tx_A, rx_timestamp_L1, most_recent_tx_B, rx_timestamp_L2;
-    uint8_t rx_timeslot_L1, rx_timeslot_L2; // stores in which round and timeslot we did receive the message we identify as initiator message at
-    uint64_t rx_round_counter_L1, rx_round_counter_L2;
-
-    uint8_t closed_round;
-
-    struct ds_twr_ts ds_ts;
-    uint64_t r_l1, r_l2, r_l3, r_l4;
-};
-
 float mtm_compute_tdoa(struct mtm_pas_tdoa *ts);
 
 #endif
@@ -142,9 +117,9 @@ LIST(rx_send_queue);
 LIST(pas_tdoa_list);
 #endif
 
-MEMB(mtm_prop_neighbor_memb, struct mtm_neighbor, TSCH_MTM_PROP_MAX_MEASUREMENT);
-MEMB(mtm_prop_rx_memb, struct mtm_rx_queue_item, TSCH_MTM_PROP_MAX_NEIGHBORS);
-MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MTM_PROP_MAX_NEIGHBORS);
+MEMB(mtm_prop_neighbor_memb, struct mtm_neighbor, TSCH_MTM_PROP_MAX_NEIGHBORS+30);
+MEMB(mtm_prop_rx_memb, struct mtm_rx_queue_item, TSCH_MTM_PROP_MAX_MEASUREMENT);
+MEMB(mtm_pas_tdoa_memb, struct mtm_pas_tdoa, (TSCH_MTM_PROP_MAX_NEIGHBORS*TSCH_MTM_PROP_MAX_NEIGHBORS)/2);
 
 static uint64_t most_recent_tx_timestamp;
 static uint64_t round_counter;
@@ -157,6 +132,10 @@ static struct mtm_packet_timestamp return_timestamps[TSCH_MTM_PROP_MAX_NEIGHBORS
 
 list_t tsch_prop_get_neighbor_list() {
     return ranging_neighbor_list;
+}
+
+list_t tsch_prop_get_tdoa_list() {
+    return pas_tdoa_list;
 }
 
 // protos
@@ -177,7 +156,7 @@ static inline int64_t interval_correct_overflow(uint64_t high_ts, uint64_t low_t
     int64_t low_ts_i = (int64_t) low_ts;
     if (high_ts_i < low_ts_i) {
         _PRINTF("interval_correct_overflow: high_ts < low_ts\n");
-        return (DW_TIMESTAMP_MAX_VALUE - low_ts_i) + high_ts_i;
+        return DW_TIMESTAMP_MAX_VALUE - low_ts_i + high_ts_i + 1;
     }
 
     return high_ts_i - low_ts_i;
@@ -252,7 +231,7 @@ void mtm_indirect_observed_node(ranging_addr_t neighbor, uint8_t timeslot_offset
     }
 
     if(n != NULL) { // this check is necessary as memory allocation might fail
-        n->last_observed = clock_time();
+        n->last_observed_indirect = clock_time();
         n->observed_timeslot = timeslot_offset;
     }
 }
@@ -272,17 +251,42 @@ void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
         // create new neighbor
       n = memb_alloc(&mtm_prop_neighbor_memb);
       if (n != NULL) {
-          n->neighbor_addr = node;
-          n->total_found_ours_counter = 0;
           list_add(ranging_neighbor_list, n);
+      } else {
+          // in this case we don't have any more memory, so we replace the oldest existing entry
+          struct mtm_neighbor *oldest = NULL;
+          struct mtm_neighbor *curr = NULL;
+          for(curr = list_head(ranging_neighbor_list); curr != NULL; curr = list_item_next(curr)) {
+              if (oldest == NULL) {
+                  oldest = curr;
+              } else {
+                  if (curr->last_observed_direct < oldest->last_observed_direct) {
+                      oldest = curr;
+                  }
+              }
+          }
+
+          // remove all pass tdoa entries with n as address
+          struct mtm_pas_tdoa *tdoa = NULL;
+            for(tdoa = list_head(pas_tdoa_list); tdoa != NULL; tdoa = list_item_next(tdoa)) {
+                if (tdoa->A_addr == oldest->neighbor_addr || tdoa->B_addr == oldest->neighbor_addr) {
+                    list_remove(pas_tdoa_list, tdoa);
+                    memb_free(&mtm_pas_tdoa_memb, tdoa);
+                }
+            }
+
+          n = oldest;
       }
   }
 
   if (n != NULL) {
       // set neighbor type to direct neighbor
+      n->neighbor_addr = node;
+      n->total_found_ours_counter = 0;
       n->type = MTM_DIRECT_NEIGHBOR;
       n->observed_timeslot = timeslot_offset;
-      n->last_observed = clock_time();
+      n->last_observed_direct = clock_time();
+      init_ds_twr_struct(&n->ts);      
   }
 }
 
@@ -358,20 +362,9 @@ void add_mtm_reception_timestamp(
         }
     }
 
-    // if no neighbor entry could be found we will create an entry for the neighbor
-    if (n == NULL) {
-        _PRINTF("MTM: No neighbor found for reception timestamp, Register new entry\n");
-        // register neighbor in our ranging structure
-        n = memb_alloc(&mtm_prop_neighbor_memb);
-        if (n != NULL) {
-            n->neighbor_addr =  neighbor_addr;
-            n->total_found_ours_counter = 0;
-            init_ds_twr_struct(&n->ts);
-            list_add(ranging_neighbor_list, n);
-        } else {
-            _PRINTF("MTM: Could not allocate memory for neighbor\n");
-            return;            
-        }
+    // will usually not happen
+    if( n == NULL ) {
+        return;
     }
 
 #if WITH_PASSIVE_TDOA
@@ -424,6 +417,7 @@ void add_mtm_reception_timestamp(
                 return;
             }
         }
+
 
         // here we do the handling in case we found A in the list as initator
         if (pas_tdoa->A_addr == m_addr) {
@@ -493,6 +487,8 @@ void add_mtm_reception_timestamp(
                     pas_tdoa->last_measurement.addr_A = rx_addr;
                     pas_tdoa->last_measurement.addr_B = m_addr;
                     pas_tdoa->last_measurement.time = tdoa;
+                    
+                    pas_tdoa->last_observed = clock_time();
             
                     notify_user_process_new_measurement(&pas_tdoa->last_measurement);                
                 }
@@ -636,6 +632,27 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
     notify_user_process_new_measurement(&mtm_n->last_measurement);
 }
 
+
+void packet_buf_copy_timestamp(uint64_t timestamp, uint8_t *buffer) {
+    // Ensure the input buffer is not NULL
+    if (!buffer) return;
+
+    for (int i = 0; i < 5; ++i) {
+        buffer[i] = (timestamp >> (8 * i)) & 0xFF;
+    }
+}
+
+void packet_buf_extract_timestamp(uint64_t *timestamp, uint8_t *buffer) {
+    // Ensure the input buffer is not NULL
+    if (!buffer) return;
+
+    *timestamp = 0;
+    for (int i = 0; i < 5; ++i) {
+        *timestamp |= ((uint64_t) buffer[i]) << (8 * i);
+    }
+}
+
+
 // We put functionality regarding package creation here for now. This allows the measurement_list to
 // remain inside this functional unit and not leak out.
 int tsch_packet_create_multiranging_packet(
@@ -684,17 +701,9 @@ int tsch_packet_create_multiranging_packet(
     return 0;
   }
 
-  // add our candidate bitmask
-  /* memcpy(&buf[curr_len], candidate_bitmask, sizeof(candidate_bitmask)); */
-  /* curr_len = curr_len + sizeof(candidate_bitmask); */
-
-  // add our own node type
-  /* memcpy(&buf[curr_len], &mtm_current_node_role, sizeof(enum mtm_node_role)); */
-  /* curr_len = curr_len + sizeof(enum mtm_node_role); */
-
   // add tx_timestamp
-  memcpy(&buf[curr_len], &tx_timestamp, sizeof(uint64_t));
-  curr_len = curr_len + sizeof(uint64_t);
+  packet_buf_copy_timestamp(tx_timestamp, &buf[curr_len]);
+  curr_len = curr_len + 5 * sizeof(uint8_t);
 
   // iterate over list of measurements and add each timestamp to the packet
   struct mtm_rx_queue_item *t = NULL;
@@ -710,8 +719,9 @@ int tsch_packet_create_multiranging_packet(
       curr_len = curr_len + sizeof(uint8_t);
       memcpy(&buf[curr_len], &t->timeslot_offset, sizeof(uint8_t));
       curr_len = curr_len + sizeof(uint8_t);
-      memcpy(&buf[curr_len], &t->rx_timestamp, sizeof(uint64_t));
-      curr_len = curr_len + sizeof(uint64_t);
+      
+      packet_buf_copy_timestamp(t->rx_timestamp, &buf[curr_len]);
+      curr_len = curr_len + 5*sizeof(uint8_t);
 
       _PRINTF("put %d -> %u%u \n", t->neighbor_addr, (uint32_t)(t->rx_timestamp >> 32), (uint32_t)(t->rx_timestamp & 0xFFFFFFFF));
   }
@@ -782,8 +792,10 @@ tsch_packet_parse_multiranging_packet(
   uint8_t amount_of_measurements;
   uint8_t mtm_found_our_own;
 
-  memcpy(&tx_timestamp, &buf[curr_len], sizeof(uint64_t));
-  curr_len = curr_len + sizeof(uint64_t);
+  packet_buf_extract_timestamp(&tx_timestamp, &buf[curr_len]);
+  curr_len = curr_len + 5 * sizeof(uint8_t);
+
+  
   memcpy(&amount_of_measurements, &buf[curr_len], sizeof(uint8_t));
   curr_len = curr_len + sizeof(uint8_t);
   for(int i = 0; i < amount_of_measurements; i++) {
@@ -793,10 +805,12 @@ tsch_packet_parse_multiranging_packet(
 
       memcpy(&neighbor, &buf[curr_len], sizeof(uint8_t));
       curr_len = curr_len + sizeof(uint8_t);
+      
       memcpy(&timeslot_offset, &buf[curr_len], sizeof(uint8_t));
       curr_len = curr_len + sizeof(uint8_t);      
-      memcpy(&rx_timestamp, &buf[curr_len], sizeof(uint64_t));
-      curr_len = curr_len + sizeof(uint64_t);
+
+      packet_buf_extract_timestamp(&rx_timestamp, &buf[curr_len]);
+      curr_len = curr_len + 5*sizeof(uint8_t);
 
       // update two_hop counter
       if(neighbor != linkaddr_node_addr.u8[LINKADDR_SIZE-1]) {

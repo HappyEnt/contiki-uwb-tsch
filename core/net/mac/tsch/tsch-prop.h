@@ -50,9 +50,9 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 #if TSCH_MTM_LOCALISATION
 
 // depends on frame length
-#define TSCH_MTM_PROP_MAX_NEIGHBORS 14
+#define TSCH_MTM_PROP_MAX_NEIGHBORS 15
 // defines the maximum amount of measurements we will store
-#define TSCH_MTM_PROP_MAX_MEASUREMENT 14
+#define TSCH_MTM_PROP_MAX_MEASUREMENT 15
 
 
 // define ranging_addr_t as uint8_t for now
@@ -80,10 +80,37 @@ struct distance_measurement {
     int32_t freq_offset;
 };
 
+
 // make public for now, should probably later be replaced with a better interface
 struct ds_twr_ts
 {
     uint64_t t_a1, r_b1, t_b1, r_a1, t_a2, r_b2, t_b2, r_a2;
+};
+
+struct mtm_pas_tdoa
+{
+    struct mtm_pas_tdoa *next;
+
+    // For internal mangement we will identify with node A the node that initiated a transfer
+    // and with node B the responder. Off course both nodes take either role, but
+    // to not mix up the timestamps we will always use the same notation.
+    ranging_addr_t A_addr; 
+    ranging_addr_t B_addr;
+
+    clock_time_t last_observed;
+
+    struct distance_measurement last_measurement;
+
+    // this information is used to detect when a round was successfully received
+    // for this we must get a return message from B which was send in the same
+    // round as the tx timestamp that we extract from A's message
+    uint64_t most_recent_tx_A, rx_timestamp_L1, most_recent_tx_B, rx_timestamp_L2;
+    uint8_t rx_timeslot_L1, rx_timeslot_L2; // stores in which round and timeslot we did receive the message we identify as initiator message at
+    uint64_t rx_round_counter_L1, rx_round_counter_L2;
+    uint8_t closed_round;
+
+    struct ds_twr_ts ds_ts;
+    uint64_t r_l1, r_l2, r_l3, r_l4;
 };
 
 enum mtm_neighbor_type  {
@@ -101,7 +128,7 @@ struct mtm_neighbor {
 
     enum mtm_neighbor_type type;
 
-    clock_time_t last_observed;
+    clock_time_t last_observed_direct, last_observed_indirect;
     uint8_t observed_timeslot; // the timeslot we learned that the node sends in
     uint64_t total_found_ours_counter; // counter which tracks how often in total we found our timestamp
 };
@@ -129,6 +156,7 @@ void mtm_set_round_end(uint16_t timeslot);
 void mtm_slot_end_handler(uint16_t timeslot);
 void set_mtm_tx_slot(uint8_t timeslot);
 list_t tsch_prop_get_neighbor_list();
+list_t tsch_prop_get_tdoa_list();
 
 // requires passing of the asn. Currently not used, but could in future be used when the duration
 // between measurements increases. This would allow us to give a measurement of how outdated or bad

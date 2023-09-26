@@ -36,6 +36,7 @@
  * \author Simon Duquennoy <simonduq@sics.se>
  */
 
+#include "apps/rand-sched/rand-sched.h"
 #include "contiki.h"
 #include "linkaddr.h"
 #include "node-id.h"
@@ -43,14 +44,26 @@
 #include "tsch-schedule.h"
 #include "dev/serial-line.h"
 
+#include "mtm_control.h"
 #include <stdint.h>
 
+#define LOC_WITH_RPL 0
+#if LOC_WITH_RPL
+#include "net/ipv6/uip-ds6-route.h"
+#include "net/rpl/rpl.h"
+#include "net/rpl/rpl-private.h"
+#include "net/nbr-table.h"
+
+#define DEBUG DEBUG_PRINT
+#include "net/ip/uip-debug.h"
+#endif
+
 #include "net/mac/tsch/tsch.h"
-#include "net/netstack.h"
 
 #include "tsch-prop.h"
 #include <stdio.h>
-#include "button-sensor.h"
+
+#include "nodes.h"
 
 #include "lib/random.h"
 #include "dev/uart0.h"
@@ -58,36 +71,34 @@
 
 #include "leds.h"
 
-#if TESTBED_TOULOUSE
-#include "toulouse-nodes.h"
+#include "button-sensor.h"
+
+#define WITH_LOC_RIME 1
+#if WITH_LOC_RIME
+#include "net/netstack.h"
+#include "net/rime/rime.h"
 #endif
-
-
 /*---------------------------------------------------------------------------*/
 PROCESS(node_process, "RPL Node");
 PROCESS(TSCH_PROP_PROCESS, "TSCH localization User Process");
 
+
 AUTOSTART_PROCESSES(&node_process, &sensors_process);
+
 
 /*---------------------------------------------------------------------------*/
 
 static void
-net_init(uint8_t is_coordinator, uint8_t is_active_node)
+net_init(uint8_t is_coordinator)
 {
-  uip_ipaddr_t global_ipaddr;
-  
-  tsch_set_send_beacons(1);
       
   if(is_coordinator) {
       tsch_set_coordinator(1); // This would otherwise be done by tsch-rpl
   }
 
-  if(!is_active_node) {
-      tsch_set_send_beacons(0);
-  }
-
   NETSTACK_MAC.on();
 }
+
 
 
 #define LOG_CONFIG_ITEM(NAME) do { printf(";; %s = %d\n", #NAME, NAME); } while(0)
@@ -111,8 +122,7 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
     // use uart0_writeb(char byte) to write range
     char buffer[60];
 
-    // we output data in units of cm
-    int length = snprintf(buffer, 60, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range * 100) );
+    int length = snprintf(buffer, 60, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range * 100 ) );
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -120,8 +130,8 @@ void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
 }
 
 void uart_write_link_addr() {
-    char buffer[50];
-    int length = snprintf(buffer, 50, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+    char buffer[40];
+    int length = snprintf(buffer, 40, "TA, %u, %u\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -130,9 +140,9 @@ void uart_write_link_addr() {
 
 void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
     // use uart0_writeb(char byte) to write range
-    char buffer[100];
+    char buffer[70];
 
-    int length = snprintf(buffer, 70, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist*100));
+    int length = snprintf(buffer, 70, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist * 100));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -168,98 +178,102 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
   PROCESS_END();
 }
 
-#if TESTBED_TOULOUSE
-const linkaddr_t *node_0_ll = &dwm1001_69_ll; //dwm1001-69 */
-const linkaddr_t *node_1_ll = &dwm1001_70_ll; //dwm1001-70 */
-const linkaddr_t *node_2_ll = &dwm1001_73_ll; // dwm1001-73 */
-#endif
 
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(node_process, ev, data)
 {
   static struct etimer et;
+  static struct etimer network_status_timer;
 
   PROCESS_BEGIN();
-
+  
+  leds_on(LEDS_ORANGE);
+  
 #define CONFIG_WAIT_TIME 1
   etimer_set(&et, CLOCK_SECOND * CONFIG_WAIT_TIME);
   PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
+
   print_configuration();
-  
+
+
   // wait again two second
   printf("=wait 1 seconds=\n");
-
-    struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, 4);
-
-    if (sf_eb != NULL) {
-        // initial shared slot
-        tsch_schedule_add_link(sf_eb,
-            LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
-            LINK_TYPE_ADVERTISING, &tsch_broadcast_address, 0, 0);  
-        if(linkaddr_cmp(node_0_ll, &linkaddr_node_addr)) {
-            printf("=node type 0 initiator=\n");
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 1, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 2, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 3, 0);
-            net_init(1, 1);                  
-        } else if(linkaddr_cmp(node_1_ll, &linkaddr_node_addr)) {
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 1, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 2, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 3, 0);
-            net_init(0, 1);      
-        } else if(linkaddr_cmp(node_2_ll, &linkaddr_node_addr)) {
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 1, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 2, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 3, 0);
-            net_init(0, 1);      
-        } else {
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 1, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 2, 0);
-            tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, 3, 0);
-            net_init(0, 0);
-        }
-    }
-    
-    mtm_set_round_end(3);    
-  
   etimer_set(&et, CLOCK_SECOND * 1);
   PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
-  etimer_set(&et, CLOCK_SECOND);
+  struct node_role_entry *role = get_node_role_entry(&linkaddr_node_addr);
+  switch(role->role) {
+  case MOBILE: {
+      net_init(0);
+      tsch_set_send_beacons(0);
+      rand_sched_init(10);
+      rand_set_timeslot_fixed(0);
+      break;
+  }
+  case ANCHOR: {
+      /* node_set_anchor(); */
+      net_init(0);
+      rand_sched_init(10);
+      
+      if(role->fixed_timeslot > 1) {  // timeslots 0 and 1 are reserved
+          tsch_set_send_beacons(1);
+          rand_set_timeslot_fixed(1);
+          rand_sched_set_timeslot(role->fixed_timeslot);          
+      }
+      
+      break;
+  }
+  case ROOT: {
+      net_init(1);
+      tsch_set_send_beacons(1);
+      rand_sched_init(10);
+      rand_set_timeslot_fixed(1); // timeslots 0 and 1 are reserved
+      rand_sched_set_timeslot(role->fixed_timeslot);
+      break;
+  }
+  }
+
+  etimer_set(&network_status_timer, CLOCK_SECOND*4);
+
+  /* Print out routing tables every minute */
+  etimer_set(&et, CLOCK_SECOND/4);
   while(1) {
-      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et)
-          || (ev == serial_line_event_message)
-          );
+
+      PROCESS_WAIT_EVENT_UNTIL(
+          (ev == serial_line_event_message)
+          || etimer_expired(&et)
+          || etimer_expired(&network_status_timer)
+      );
+
+      if(etimer_expired(&network_status_timer)) {
+          uart_write_link_addr();
+          etimer_reset(&network_status_timer);
+      }
 
       if(ev == serial_line_event_message) {
           char *serial_data = (char *)data;
           printf("received line: %s\n", serial_data);
 
-          if(serial_data[0] == 's') {
+          if(serial_data[0] == 't') {
               // read number, skip one space
-              int distance;
-              sscanf(serial_data, "s %d", &distance);
+              int timeslot;
+              sscanf(serial_data, "t %d", &timeslot);
 
-              // minimum slot distance is 1
-              if(distance > UINT8_MAX || distance < 1) {
-                  printf("invalid distance\n");
+              if(timeslot > UINT8_MAX || timeslot < 0) {
+                  printf("invalid timeslot\n");
               }
-              
-              /* generate_slotframe_with_distance(distance); */
+              rand_sched_set_timeslot((uint8_t) timeslot);
           }
       }
 
       // if tsch_is_associated add for each neighbor a ranging slot
       if(tsch_is_associated) {
           leds_toggle(LEDS_3);
-
-          printf("tschass, 1\n");
+          printf("tschass 1\n");
       } else {
-          printf("tschass, 0\n");          
+          printf("tschass 0\n");          
       }
-      
-      uart_write_link_addr();
 
       if(etimer_expired(&et)) {
           etimer_reset(&et);

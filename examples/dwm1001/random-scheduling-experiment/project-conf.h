@@ -54,6 +54,7 @@
 #define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
 #define DWM1001_LOAD_OTP_ANTENNA_DELAY 1
 
+
 /*******************************************************/
 /********* Enable RPL non-storing mode *****************/
 /*******************************************************/
@@ -172,11 +173,8 @@
 #define UWB_TX_REDUCED_RANGE 1
 #endif
 
-// Since we don't do timesync on ranging packets yet,
-// and we also wan't to have as short timeslots as possible
-// we shorten the beacon periods as fast as possible
-#define TSCH_CONF_EB_PERIOD (CLOCK_SECOND) // default 16
-#define TSCH_CONF_MAX_EB_PERIOD (CLOCK_SECOND) //default 50
+#define TSCH_CONF_EB_PERIOD (2*CLOCK_SECOND) // default 16
+#define TSCH_CONF_MAX_EB_PERIOD (8*CLOCK_SECOND) //default 50
 #define TSCH_CONF_HW_FRAME_FILTERING    0
 // if not ORCHESTRA
 #if !(WITH_ORCHESTRA)

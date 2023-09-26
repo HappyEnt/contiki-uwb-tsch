@@ -30,9 +30,9 @@
 
 /**
  * \file
- *         Orchestra header file
+ *         Rand Scheduler Header Files 
  *
- * \author Simon Duquennoy <simonduq@sics.se>
+ * \author El Pato
  */
 
 #ifndef __DRAND_H__
@@ -42,10 +42,11 @@
 #include "net/mac/tsch/tsch-conf.h"
 #include "net/mac/tsch/tsch-schedule.h"
 
-/* The structure of an Orchestra rule */
-/* extern linkaddr_t orchestra_parent_linkaddr; */
-
-/* Call from application to start Orchestra */
 void rand_sched_init(uint8_t max_mtm_slots);
+void rand_sched_set_timeslot(uint8_t timeslot);
+
+// If timeslot is set fixed, a node with never backoff from its choice.
+// This is used for nodes that should act as anchors
+void rand_set_timeslot_fixed(uint8_t enable);
 
 #endif /* __DRAND_H__ */
