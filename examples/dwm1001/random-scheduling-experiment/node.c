@@ -118,11 +118,11 @@ static void print_configuration() {
     printf(";; SCHEDULE_USED = CUSTOM\n");
 }
 
-void output_range_via_serial_snprintf(uint8_t addr_short, float range) {
+void output_range_via_serial_snprintf(uint8_t addr_short, float range, struct tsch_asn_t asn) {
     // use uart0_writeb(char byte) to write range
-    char buffer[60];
+    char buffer[80];
 
-    int length = snprintf(buffer, 60, "TW, %u,"NRF_LOG_FLOAT_MARKER "\n", addr_short, NRF_LOG_FLOAT( range * 100 ) );
+    int length = snprintf(buffer, 80, "TW, %u, %u, "NRF_LOG_FLOAT_MARKER "\n", addr_short, asn.ls4b, NRF_LOG_FLOAT( range * 100 ));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -138,11 +138,11 @@ void uart_write_link_addr() {
     }
 }
 
-void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist) {
+void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr, float dist, struct tsch_asn_t asn) {
     // use uart0_writeb(char byte) to write range
-    char buffer[70];
+    char buffer[80];
 
-    int length = snprintf(buffer, 70, "TD, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, NRF_LOG_FLOAT(dist * 100));
+    int length = snprintf(buffer, 80, "TD, %u, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", node1_addr, node2_addr, asn.ls4b, NRF_LOG_FLOAT(dist * 100));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -164,12 +164,13 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
         m = (struct distance_measurement *) data;
 #if WITH_UART_OUTPUT_RANGE
         float dist = time_to_dist(m->time);
+        struct tsch_asn_t asn = m->asn;
         if(m->type == TWR) {
             ranging_addr_t addr_short = m->addr_B;
-            output_range_via_serial_snprintf(addr_short, dist);
+            output_range_via_serial_snprintf(addr_short, dist, asn);
         } else if (m->type == TDOA) {
             /* printf("TDOA between %u and %u is %d\n", m->addr_A, m->addr_B, m->time); */
-            output_tdoa_via_serial(m->addr_A, m->addr_B, dist);
+            output_tdoa_via_serial(m->addr_A, m->addr_B, dist, asn);
         }
 #endif
     }
@@ -215,11 +216,16 @@ PROCESS_THREAD(node_process, ev, data)
       /* node_set_anchor(); */
       net_init(0);
       rand_sched_init(10);
+      tsch_set_send_beacons(0);
+
+      if(role->send_beacons) {
+          tsch_set_send_beacons(1);
+      }
       
       if(role->fixed_timeslot > 1) {  // timeslots 0 and 1 are reserved
           tsch_set_send_beacons(1);
           rand_set_timeslot_fixed(1);
-          rand_sched_set_timeslot(role->fixed_timeslot);          
+          rand_sched_set_timeslot(role->fixed_timeslot);
       }
       
       break;
@@ -268,12 +274,12 @@ PROCESS_THREAD(node_process, ev, data)
       }
 
       // if tsch_is_associated add for each neighbor a ranging slot
-      if(tsch_is_associated) {
-          leds_toggle(LEDS_3);
-          printf("tschass 1\n");
-      } else {
-          printf("tschass 0\n");          
-      }
+      /* if(tsch_is_associated) { */
+      /*     leds_toggle(LEDS_3); */
+      /*     /\* printf("tschass 1\n"); *\/ */
+      /* } else { */
+      /*     /\* printf("tschass 0\n");           *\/ */
+      /* } */
 
       if(etimer_expired(&et)) {
           etimer_reset(&et);

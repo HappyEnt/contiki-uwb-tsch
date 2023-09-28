@@ -2123,6 +2123,7 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
       timestamp_tx
   );
 
+
   current_neighbor = tsch_queue_add_nbr(&(current_link->addr));
 
   if(NETSTACK_RADIO.prepare(packet_buf, packet_len) == 0) { /* 0 means success */
@@ -2149,16 +2150,18 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
         add_mtm_transmission_timestamp(&tsch_current_asn, timestamp_tx);
     } else {
         add_mtm_transmission_timestamp(&tsch_current_asn, UINT64_MAX);
-        printf("MTM: TX failed: 1\n");
+        _PRINTF("MTM: TX failed: 1\n");
     }
 
 #if MTM_SLOT_DURATIONS_EVAL
     prop_handling_end_time = RTIMER_NOW();
 #endif
 
+    /* printf("ppl, %u\n", packet_len); */
+    
     // last read out tx_timestamp and compare with the timestamp we set in the delayed send
-    uint64_t reference_tx = 0x0;
-    NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &reference_tx, sizeof(uint64_t));
+    /* uint64_t reference_tx = 0x0; */
+    /* NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &reference_tx, sizeof(uint64_t)); */
 
 #if MTM_SLOT_DURATIONS_EVAL
     printf("txd, %lu, %lu, %lu, %lu, %lu\n",
@@ -2166,17 +2169,15 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
         RTIMERTICKS_TO_US(tx_end_time), RTIMERTICKS_TO_US(prop_handling_end_time));
 #endif
     
-    if(reference_tx != timestamp_tx) {
-      printf("MTM: TX timestamp mismatch: \n");
-    }
+    /* if(reference_tx != timestamp_tx) { */
+      /* printf("MTM: TX timestamp mismatch: \n"); */
+    /* } */
   } else {
      add_mtm_transmission_timestamp(&tsch_current_asn, UINT64_MAX);
-     printf("MTM: TX failed: 2\n");
+     _PRINTF("MTM: TX failed: 2\n");
   }
-
+  
   mtm_slot_end_handler(current_link->timeslot);
-
-  /* printf("packet length: %d\n", packet_len); */
 
   TSCH_DEBUG_TX_EVENT();
 
@@ -2320,7 +2321,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
               add_to_direct_observed_rx_to_queue(timestamp_rx_A, neighbor, timeslot_offset);
               add_mtm_reception_timestamp(neighbor, &tsch_current_asn, timeslot_offset, timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
           } else {
-              printf("mtm parse failed\n");
+              _PRINTF("mtm parse failed\n");
           }
 
 #if MTM_SLOT_DURATIONS_EVAL

@@ -67,7 +67,7 @@ PROCESS(rand_sched_process, "RANDSCHED");
 
 /* #define RAND_SCHED_MAX_NEIGHBORS 40 */
 
-#define MAX_LAST_SEEN_INTERVAL CLOCK_SECOND*3
+#define MAX_LAST_SEEN_INTERVAL CLOCK_SECOND*1
 
 static struct etimer rand_schedule_phase_timer;
 /* static struct etimer decision_evaluation_timer; */
@@ -116,7 +116,8 @@ static void remove_transmit_link(uint8_t timeslot);
 static void sched_neighbor_discovery_stop();
 static uint8_t check_have_timeslot();
 static void save_alive_neighbors_timestamp_counters();
-    
+static void eval_print_rand_sched_status();
+
 static uint8_t neighbor_discovery_running = 0;
 
 
@@ -124,7 +125,6 @@ static uint8_t neighbor_discovery_running = 0;
 // that we throw our pick away. The highest probability is hereby 3/4 to keep the timeslot
 // at a period of 10 seconds
 static uint8_t backoff_lottery(clock_time_t time_since_pick) {
-    
     uint8_t backoff = 0;
     if(time_since_pick > CLOCK_SECOND*10) {
         backoff = 1;
@@ -140,7 +140,9 @@ static uint8_t backoff_lottery(clock_time_t time_since_pick) {
 
     return random_rand() % backoff;
 }
-    
+
+/* static void backoff */
+
 static void discovery_recv(struct neighbor_discovery_conn *c,
     const linkaddr_t *from, uint16_t val) {
     clock_time_t now = clock_time();
@@ -163,12 +165,13 @@ static void discovery_recv(struct neighbor_discovery_conn *c,
 
     if (n == NULL || ((now - n->last_observed_direct) > MAX_LAST_SEEN_INTERVAL)) {
         /* || val == our_timeslot */
-        printf("boff, %u\n", from->u8[LINKADDR_SIZE-1]);
+        printf("P: boff, %u\n", from->u8[LINKADDR_SIZE-1]);
         remove_transmit_link(our_timeslot);
         sched_neighbor_discovery_stop();
         neighbor_discovery_set_val(&neighbor_discovery, 0);
         /* tsch_set_send_beacons(0); */
     }
+    eval_print_rand_sched_status();
 }
 
 void rand_set_timeslot_fixed(uint8_t enable) {
@@ -208,11 +211,11 @@ void rand_sched_init(uint8_t max_mtm_slots) {
 
     node_state.max_slots = max_mtm_slots;
     
-    struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, node_state.max_slots + MTM_ROUND_START + 1);
+    struct tsch_slotframe *sf_eb = tsch_schedule_add_slotframe(0, node_state.max_slots + MTM_ROUND_START + 2);
     tsch_schedule_add_link(
         sf_eb,
         LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
-        LINK_TYPE_NORMAL,
+        LINK_TYPE_ADVERTISING_ONLY,
         &tsch_broadcast_address,
         0,
         0);
@@ -224,16 +227,11 @@ void rand_sched_init(uint8_t max_mtm_slots) {
         &tsch_broadcast_address,
         1,
         0);
+    
 
     // initialize all other links as RX PROP MTM
     for(int i = MTM_START_SLOT; i < MTM_START_SLOT + node_state.max_slots; i++) {
-        tsch_schedule_add_link(
-            sf_eb,
-            LINK_OPTION_RX,
-            LINK_TYPE_PROP_MTM,
-            &tsch_broadcast_address,
-            i,
-            0);
+        tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, i, 0);
     }
 
     mtm_set_round_end(MTM_START_SLOT + node_state.max_slots - 1);
@@ -245,6 +243,13 @@ void rand_sched_init(uint8_t max_mtm_slots) {
         &tsch_broadcast_address,
         MTM_ROUND_START + node_state.max_slots,
         0);
+    tsch_schedule_add_link(
+        sf_eb,
+        LINK_OPTION_TX | LINK_OPTION_RX | LINK_OPTION_SHARED | LINK_OPTION_TIME_KEEPING,
+        LINK_TYPE_NORMAL,
+        &tsch_broadcast_address,
+        MTM_ROUND_START + node_state.max_slots + 1,
+        0);    
 
     
     process_start(&rand_sched_process, NULL);
@@ -344,7 +349,7 @@ static uint8_t choose_free_timeslot() {
 
 // for now the lottery is a coin toss
 static uint8_t play_lottery() {
-    return !(random_rand() % 20);
+    return !(random_rand() % 2);
 }
 
 static uint8_t check_have_timeslot() {
@@ -430,22 +435,30 @@ static void save_alive_neighbors_timestamp_counters() {
     }
 }
 
-uint8_t check_planarity(clock_time_t now) {
-}
-
 uint8_t check_eligibility(clock_time_t now) {
     // first check whether we have one active neighbor at least
     struct mtm_neighbor *n = NULL;
+    uint8_t eligible = 1;
     uint8_t num_active_neighbors = 0;
-    int8_t edge_count = 0, node_count = 0;
+    
+#if RAND_SCHED_RULES_WITH_PLANARITY_CHECK
+    int8_t edge_count = 0, node_count = 1;
+#endif
+    
     for(n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) {
         clock_time_t last_seen = now - n->last_observed_direct;
         if((last_seen) < MAX_LAST_SEEN_INTERVAL) {
             num_active_neighbors++;
+            
+#if RAND_SCHED_RULES_WITH_PLANARITY_CHECK            
             node_count++;
+            edge_count++; // TODO  compare with other version without
+#endif
+            
         }
     }
 
+#if RAND_SCHED_RULES_WITH_PLANARITY_CHECK
     struct mtm_pas_tdoa *pas = NULL;
     for(pas = list_head(tsch_prop_get_tdoa_list()); pas != NULL; pas = list_item_next(pas)) {
         clock_time_t last_seen = now - pas->last_observed;
@@ -454,28 +467,51 @@ uint8_t check_eligibility(clock_time_t now) {
         }
     }
 
-    // use eulers formula to check for planarity
-    return num_active_neighbors > 2 && !(edge_count > (3 * node_count - 6));
+    /* if( edge_count > (3 * node_count - 6)) { */
+    /*     eligible = 0; */
+    /* } */
+
+    if( edge_count > (3 * node_count - 2)) {
+        eligible = 0;
+    }    
+#endif
+    
+    if(num_active_neighbors < 3) {
+        eligible = 0;
+    }
+
+    return eligible;
 }
 
 static void remove_transmit_link(uint8_t timeslot) {
-    printf("r\n");
     struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
-    if(sf_eb != NULL) {
-        struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, timeslot);
-        l->link_options = LINK_OPTION_RX;
+    /* if(sf_eb != NULL) { */
+    /*     printf("P: Setting link to rx\n"); */
+    /*     struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, timeslot); */
+    /*     l->link_options = LINK_OPTION_RX; */
+    /* } */
+    uint8_t success = tsch_schedule_remove_link_by_timeslot(sf_eb, timeslot);
+
+    if(success) {
+        tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, timeslot, 0);        
+    } else {
+        printf("P: Could not remove link\n");
     }
+    
+    
 }
 
 static void add_transmit_link(uint8_t timeslot) {
     struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
     if(sf_eb != NULL) {
-        printf("Setting link to tx\n");
-        struct tsch_link *l = tsch_schedule_get_link_by_timeslot(sf_eb, timeslot);
-        if(l == NULL) {
-            printf("Could not find link\n");
+        printf("P: Setting link to tx\n");
+        uint8_t success = tsch_schedule_remove_link_by_timeslot(sf_eb, timeslot);
+
+        if(success) {
+            tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, timeslot, 0);        
+        } else {
+            printf("P: Could not add link\n");
         }
-        l->link_options = LINK_OPTION_TX;
     }
 }
 
@@ -535,17 +571,17 @@ static uint8_t good_decision(uint8_t timeslot) {
 
 
 static void eval_print_rand_sched_status() {
-    struct mtm_neighbor *mtm_neighbor = NULL;
-    struct drand_neighbor_state *alive_neighbor = NULL;
-    printf("tpnl, ");
+    /* struct mtm_neighbor *mtm_neighbor = NULL; */
+    /* struct drand_neighbor_state *alive_neighbor = NULL; */
+    /* printf("tpnl, "); */
     
-    for(mtm_neighbor = list_head(tsch_prop_get_neighbor_list()); mtm_neighbor != NULL; mtm_neighbor = mtm_neighbor->next) {
-        printf("%u, ", mtm_neighbor->neighbor_addr);
-    } printf("\n");
+    /* for(mtm_neighbor = list_head(tsch_prop_get_neighbor_list()); mtm_neighbor != NULL; mtm_neighbor = mtm_neighbor->next) { */
+    /*     printf("%u, ", mtm_neighbor->neighbor_addr); */
+    /* } printf("\n"); */
 
-    for(alive_neighbor = list_head(direct_neighbor_list); alive_neighbor != NULL; alive_neighbor = alive_neighbor->next) {
-        printf("%u, ", alive_neighbor->addr);
-    } printf("\n");
+    /* for(alive_neighbor = list_head(direct_neighbor_list); alive_neighbor != NULL; alive_neighbor = alive_neighbor->next) { */
+    /*     printf("%u, ", alive_neighbor->addr); */
+    /* } printf("\n"); */
 
     printf("ndr, %u\n", neighbor_discovery_running);
 
@@ -561,13 +597,15 @@ void rand_sched_set_timeslot(uint8_t timeslot) {
     uint8_t our_timeslot = check_have_timeslot();
     if(our_timeslot) {
         remove_transmit_link(our_timeslot);
-        sched_neighbor_discovery_stop();
+        sched_neighbor_discovery_stop();            
     }
+    
+    mtm_reset_rx_queue();
     
     add_transmit_link(timeslot);
     
     neighbor_discovery_set_val(&neighbor_discovery, timeslot);
-    tsch_set_send_beacons(1);
+    /* tsch_set_send_beacons(1); */
     node_state.picked_timeslot_at = clock_time();
     /* save_alive_neighbors_timestamp_counters(); */
     ctimer_set(&start_neighbor_discovery_timer, CLOCK_SECOND/2, &sched_neighbor_discovery_start, NULL);    
@@ -582,11 +620,9 @@ PROCESS_THREAD(rand_sched_process, ev, data)
   /* etimer_set(&neighbor_discovery_phase_timer, CLOCK_SECOND * 40); */
 
   /* etimer_set(&initial_wait_timer, CLOCK_SECOND * 10); // wait 10 seconds before starting */
-  /* etimer_set(&decision_evaluation_timer, CLOCK_SECOND/2); // every 250ms make a scheduling decision   */
-
   /* PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&initial_wait_timer)); */
   
-  etimer_set(&rand_schedule_phase_timer, CLOCK_SECOND);
+  etimer_set(&rand_schedule_phase_timer, CLOCK_SECOND/2);
   
   while(1) {
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&rand_schedule_phase_timer)
@@ -604,16 +640,11 @@ PROCESS_THREAD(rand_sched_process, ev, data)
                   printf("won\n");
                   handle_won_lottery();
               }
-              
+
+              // maybe we need to check whether we are still planar
               /* else { */
-              /*     if(!good_decision(our_timeslot)) { */
-              /*         printf("bad\n"); */
-              /*         remove_transmit_link(our_timeslot); */
-                      
-              /*         /\* sched_neighbor_discovery_stop(); *\/ */
-              /*         /\* neighbor_discovery_set_val(&neighbor_discovery, 0); *\/ */
+              /*     if(!check_eligibility(now)) { */
               /*     } */
-              /*     save_alive_neighbors_timestamp_counters(); */
               /* } */
           }
           

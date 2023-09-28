@@ -138,6 +138,14 @@ list_t tsch_prop_get_tdoa_list() {
     return pas_tdoa_list;
 }
 
+void mtm_reset_rx_queue() {
+    // free all elements in queue
+    struct mtm_rx_queue_item *item;
+    while((item = list_pop(rx_send_queue)) != NULL) {
+        memb_free(&mtm_prop_rx_memb, item);
+    }
+}
+
 // protos
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts);
 void debug_output_ds_twr_timestamps(struct ds_twr_ts *ts, ranging_addr_t neighbor_addr);
@@ -277,16 +285,17 @@ void mtm_direct_observed_node(ranging_addr_t node, uint8_t timeslot_offset) {
 
           n = oldest;
       }
+      
+      n->total_found_ours_counter = 0;
+      init_ds_twr_struct(&n->ts);
   }
 
   if (n != NULL) {
       // set neighbor type to direct neighbor
       n->neighbor_addr = node;
-      n->total_found_ours_counter = 0;
       n->type = MTM_DIRECT_NEIGHBOR;
       n->observed_timeslot = timeslot_offset;
       n->last_observed_direct = clock_time();
-      init_ds_twr_struct(&n->ts);      
   }
 }
 
@@ -313,8 +322,11 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
 
     struct mtm_rx_queue_item *t = NULL;
     
-    if (list_length (rx_send_queue) >= TSCH_MTM_PROP_MAX_NEIGHBORS) {
+    if (list_length (rx_send_queue) > TSCH_MTM_PROP_MAX_MEASUREMENT) {
         _PRINTF("MTM: RX queue full, dropping received timestamp\n");
+
+        // this should never happen, so lets reset the queue
+        mtm_reset_rx_queue();
         return;
     }
 
@@ -329,6 +341,7 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
         // replace entry
         t->rx_timestamp = rx_timestamp;
         t->neighbor_addr = neighbor;
+        t->timeslot_offset = timeslot_offset;
     } else {
         t = memb_alloc(&mtm_prop_rx_memb);
 
@@ -405,17 +418,27 @@ void add_mtm_reception_timestamp(
             // create a new entry
             pas_tdoa = memb_alloc(&mtm_pas_tdoa_memb);
             if (pas_tdoa != NULL) {
-                init_tdoa_struct(pas_tdoa);
-                // in case that we have not any entry yet, we will identify with A the initiator and B the responder
-                pas_tdoa->B_addr = rx_addr;
-                pas_tdoa->A_addr = m_addr;
-
-                // add to pas_tdoa_list
                 list_add(pas_tdoa_list, pas_tdoa);
             } else {
-                _PRINTF("MTM: Could not allocate memory for pas_tdoa\n");
-                return;
+                // else we replace the oldest entry
+                struct mtm_pas_tdoa *oldest = NULL;
+                struct mtm_pas_tdoa *curr = NULL;
+                for(curr = list_head(pas_tdoa_list); curr != NULL; curr = list_item_next(curr)) {
+                    if (oldest == NULL) {
+                        oldest = curr;
+                    } else {
+                        if (curr->last_observed < oldest->last_observed) {
+                            oldest = curr;
+                        }
+                    }
+                }
+                
+                pas_tdoa = oldest;
             }
+            
+            pas_tdoa->B_addr = rx_addr;
+            pas_tdoa->A_addr = m_addr;
+            init_tdoa_struct(pas_tdoa);
         }
 
 
@@ -487,6 +510,7 @@ void add_mtm_reception_timestamp(
                     pas_tdoa->last_measurement.addr_A = rx_addr;
                     pas_tdoa->last_measurement.addr_B = m_addr;
                     pas_tdoa->last_measurement.time = tdoa;
+                    pas_tdoa->last_measurement.asn = *asn;
                     
                     pas_tdoa->last_observed = clock_time();
             
@@ -628,6 +652,7 @@ void mtm_compute_dstwr(struct tsch_asn_t *asn, struct mtm_neighbor *mtm_n) {
     mtm_n->last_measurement.addr_B = mtm_n->neighbor_addr;
     mtm_n->last_measurement.time = prop_time;
     mtm_n->last_measurement.freq_offset = carrier_integrator;
+    mtm_n->last_measurement.asn = *asn;
 
     notify_user_process_new_measurement(&mtm_n->last_measurement);
 }

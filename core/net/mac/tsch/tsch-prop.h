@@ -52,7 +52,7 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 // depends on frame length
 #define TSCH_MTM_PROP_MAX_NEIGHBORS 15
 // defines the maximum amount of measurements we will store
-#define TSCH_MTM_PROP_MAX_MEASUREMENT 15
+#define TSCH_MTM_PROP_MAX_MEASUREMENT 10
 
 
 // define ranging_addr_t as uint8_t for now
@@ -65,6 +65,8 @@ enum measurement_type {
 
 struct distance_measurement {
     enum measurement_type type;
+
+    struct tsch_asn_t asn;
 
     /* In case that the measurement type is of type TWR, addr_a and addr_b denote the two nodes, for
      * which we calculated the time of flight. Note that in most cases addr_a will therefore be our
@@ -155,6 +157,7 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
 void mtm_set_round_end(uint16_t timeslot);
 void mtm_slot_end_handler(uint16_t timeslot);
 void set_mtm_tx_slot(uint8_t timeslot);
+void mtm_reset_rx_queue();
 list_t tsch_prop_get_neighbor_list();
 list_t tsch_prop_get_tdoa_list();
 

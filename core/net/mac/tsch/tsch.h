@@ -188,6 +188,9 @@ void tsch_set_coordinator(int enable);
 /* Set the pan as secured or not */
 void tsch_set_pan_secured(int enable);
 
+/* some do not need to send beacons, like passive ranging nodes in our design */ 
+void tsch_set_send_beacons(int enable);
+
 /* Return if the localization timeslots are enabled or not */
 uint8_t tsch_is_prop_measurement_enable();
 /* Enable or disable the schedule of localization timeslot */

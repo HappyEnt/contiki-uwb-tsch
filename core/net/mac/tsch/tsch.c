@@ -137,6 +137,9 @@ int tsch_is_initialized = 0;
 int tsch_is_coordinator = 0;
 /* Are we associated to a TSCH network? */
 int tsch_is_associated = 0;
+/* by default always send beacons */
+int tsch_is_beacon_sender = 1;
+
 /* Is the PAN running link-layer security? */
 int tsch_is_pan_secured = LLSEC802154_ENABLED;
 /* The current Absolute Slot Number (ASN) */
@@ -181,6 +184,10 @@ void
 tsch_set_pan_secured(int enable)
 {
   tsch_is_pan_secured = LLSEC802154_ENABLED && enable;
+}
+/*---------------------------------------------------------------------------*/
+void tsch_set_send_beacons(int enable) {
+    tsch_is_beacon_sender = enable;
 }
 /*---------------------------------------------------------------------------*/
 void
@@ -665,7 +672,7 @@ PT_THREAD(tsch_scan(struct pt *pt))
       if(current_channel != scan_channel) {
         NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, scan_channel);
         current_channel = scan_channel;
-        PRINTF("TSCH: scanning on channel %u\n", scan_channel);
+        printf("TSCH: scanning on channel %u\n", scan_channel);
       }
       current_channel_since = now_time;
     }
@@ -766,7 +773,7 @@ PROCESS_THREAD(tsch_send_eb_process, ev, data)
   while(1) {
     unsigned long delay;
 
-    if(tsch_is_associated && tsch_current_eb_period > 0) {
+    if(tsch_is_associated && tsch_is_beacon_sender && tsch_current_eb_period > 0) {
       /* Enqueue EB only if there isn't already one in queue */
       if(tsch_queue_packet_count(&tsch_eb_address) == 0) {
         int eb_len;

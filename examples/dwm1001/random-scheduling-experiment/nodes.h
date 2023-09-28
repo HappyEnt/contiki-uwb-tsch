@@ -9,6 +9,7 @@ struct node_role_entry {
     const linkaddr_t *addr;
     enum node_role role;
     uint8_t fixed_timeslot;
+    uint8_t send_beacons;
 };
 
 extern struct node_role_entry node_role[];

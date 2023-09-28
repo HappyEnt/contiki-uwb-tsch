@@ -53,7 +53,8 @@
 /*******************************************************/
 #define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
 #define DWM1001_LOAD_OTP_ANTENNA_DELAY 1
-
+#define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 1
+#define MTM_CALCULATE_PROCESSING_DELAY 0
 
 /*******************************************************/
 /********* Enable RPL non-storing mode *****************/
@@ -95,6 +96,7 @@
 #else
 // either we let tsch automatically choose a time source or we use rpls time source selection
 // Note that the former should probably not be done in heavy multihop networks
+#undef TSCH_CONF_AUTOSELECT_TIME_SOURCE
 #define TSCH_CONF_AUTOSELECT_TIME_SOURCE 1
 #endif
 #define TSCH_SCHEDULE_CONF_MAX_LINKS 32
@@ -174,7 +176,7 @@
 #endif
 
 #define TSCH_CONF_EB_PERIOD (2*CLOCK_SECOND) // default 16
-#define TSCH_CONF_MAX_EB_PERIOD (8*CLOCK_SECOND) //default 50
+#define TSCH_CONF_MAX_EB_PERIOD (4*CLOCK_SECOND) //default 50
 #define TSCH_CONF_HW_FRAME_FILTERING    0
 // if not ORCHESTRA
 #if !(WITH_ORCHESTRA)
