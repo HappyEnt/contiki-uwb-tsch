@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
+import sys, pickle
 
 file_name = None
 
@@ -75,8 +75,14 @@ def load_distances_from_timestamps_measurements(file_name):
 
 # load the range estimations which where directly processed onboard of the device
 def load_distances_from_distance_measurements(file_name):
-    s = open(file_name, 'r').read()
-    distances = eval(s)
+    # if file name ends on .txt
+    if file_name[-4:] == '.txt':
+        s = open(file_name, 'r').read()
+        distances = eval(s)
+    # else if on pkl
+    elif file_name[-4:] == '.pkl':
+        distances = pickle.load(open(file_name, 'rb'))
+        
     dists = {}
     cfos = {}
     
@@ -148,8 +154,14 @@ def load_tdoa_from_measurents_file_with_slot_distances(file_name):
 
 
 def load_twr_from_measurements_file_with_slot_distances(file_name):
-    s = open(file_name, 'r').read()
-    distances = eval(s)
+    distances = None
+    if file_name[-4:] == '.txt':
+        s = open(file_name, 'r').read()
+        distances = eval(s)
+    # else if on pkl
+    elif file_name[-4:] == '.pkl':
+        distances = pickle.load(open(file_name, 'rb'))
+
     dists = {}
     
     for node1, distances_dict in distances.items():
@@ -214,76 +226,111 @@ def plot_distance_differences(ax, distance_differences, experiment_desc):
     fig.tight_layout()  # otherwise the right y-label is slightly clippedn
     plt.title(experiment_desc)
 
-def plot_twr_per_slot_dist(ax, dist_distances_dict, experiment_desc):
+def plot_twr_per_slot_dist(ax_clean, ax_scatter, dist_distances_dict, experiment_desc):
     means = []
     variances = []
     for dist, ranges in dist_distances_dict.items():
         means.append(np.mean(ranges))
         variances.append(np.var(ranges))
 
-    print(means)
-    print(variances)
+    all_ranges = []
+    dist_markers_positions = []
+    for dist, ranges in dist_distances_dict.items():
+        if (dist % 10) == 0:
+            print(dist)
+            dist_markers_positions.append(len(all_ranges))
+            
+        all_ranges.extend(ranges)
+
+
+    # plot all ranges
+    ax_scatter.scatter(range(len(all_ranges)), all_ranges, color='black', alpha=0.5, marker='x')
+    ax_scatter.set_xlabel('Measurement number')
+    ax_scatter.set_ylabel('Distance [cm]')
+
+    # add markers as vertical bars
+    for pos in dist_markers_positions:
+        ax_scatter.axvline(x=pos, color='r', linestyle='-', label='Ground truth')
+        
+    plt.title(experiment_desc)
+
+    # print(means)
+    # print(variances)
 
     # for each distance plot means and variances using error bars
-    ax.errorbar(range(len(means)), means, yerr=variances, fmt='o', color='black',
+    ax_clean.errorbar(range(len(means)), means, yerr=variances, fmt='o', color='black',
                     ecolor='lightgray', elinewidth=3, capsize=0)
-    ax.set_xlabel('Slot distance')
-    ax.set_ylabel('Distance [cm]')
-    ax.set_xticks(range(len(means)))
-    ax.set_xticklabels(dist_distances_dict.keys())
+    ax_clean.set_xlabel('Slot distance')
+    ax_clean.set_ylabel('Distance [cm]')
+    ax_clean.set_xticks(range(len(means)))
+    ax_clean.set_xticklabels(dist_distances_dict.keys())
     plt.title(experiment_desc)
 
 
 # ---------------------- distances per slot -----------------------
-fig, ax = plt.subplots()
-dists_more_adv = load_twr_from_measurements_file_with_slot_distances("distance_measurements_long_with_more_advertisement.txt")
-plot_twr_per_slot_dist(ax, dists_more_adv[2][1], "Distances per slot distance")
-plt.show()
+# fig, ax = plt.subplots()
+# dists_more_adv = load_twr_from_measurements_file_with_slot_distances("distance_measurements_long_with_more_advertisement.txt")
+# plot_twr_per_slot_dist(ax, dists_more_adv[2][1], "Distances per slot distance")
+# plt.show()
 
 # ---------------------- dist diff per slot -----------------------
-fig, ax = plt.subplots()
-dists_diff_more_adv = load_tdoa_from_measurents_file_with_slot_distances("distances_differences_long_with_more_advertising.txt")
-plot_twr_per_slot_dist(ax, dists_diff_more_adv[13][(2,1)], "Distances per slot distance")
-plt.show()
+# fig, ax = plt.subplots()
+# dists_diff_more_adv = load_tdoa_from_measurents_file_with_slot_distances("distances_differences_long_with_more_advertising.txt")
+# plot_twr_per_slot_dist(ax, dists_diff_more_adv[13][(2,1)], "Distances per slot distance")
+# plt.show()
 
 
 # ----------------------- Distance Differences Experiments --------------------#
-dists_diffs_float = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_float.txt")
-dists_diffs_double = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_double.txt")
-dists_diffs_more_double = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_even_more_double.txt")
-dists_diffs_double_256 = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_even_double_256_preamble.txt")
-dists_diffs_double_256_long = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_double_really_long_256_preamble.txt")
-dists_diffs_more_adv = load_distance_differences_from_measurents_file_without_slotdistances("distances_differences_long_with_more_advertising.txt")
+# dists_diffs_float = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_float.txt")
+# dists_diffs_double = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_double.txt")
+# dists_diffs_more_double = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_even_more_double.txt")
+# dists_diffs_double_256 = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_even_double_256_preamble.txt")
+# dists_diffs_double_256_long = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_double_really_long_256_preamble.txt")
+# dists_diffs_more_adv = load_distance_differences_from_measurents_file_without_slotdistances("distances_differences_long_with_more_advertising.txt")
 
-fig, axs = plt.subplots(4, 1, sharex=True)
+# fig, axs = plt.subplots(4, 1, sharex=True)
 
-current_ax = 0
-for node_passive, measurements_dict in dists_diffs_more_adv.items():
-    for anchor_pair, dist_diffs in measurements_dict.items():
-        ax = axs[current_ax]
-        current_ax += 1
-        plot_distance_differences(ax, filter_outliers(dist_diffs), f"chan 7 (PHY 5 PRF 64), 2.5ms slot length, {node_passive} with {anchor_pair}, 256 preamble" )
+# current_ax = 0
+# for node_passive, measurements_dict in dists_diffs_more_adv.items():
+#     for anchor_pair, dist_diffs in measurements_dict.items():
+#         ax = axs[current_ax]
+#         current_ax += 1
+#         plot_distance_differences(ax, filter_outliers(dist_diffs), f"chan 7 (PHY 5 PRF 64), 2.5ms slot length, {node_passive} with {anchor_pair}, 256 preamble" )
         
-plt.show()
+# plt.show()
     
                               
 # ----------------------- Distance Experiments --------------------#
-dists7, cfos7 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us.txt")
-dists3, cfos3 = load_distances_from_distance_measurements("distances_with_cfos_chan_3.txt")
-dists11, cfos11 = load_distances_from_distance_measurements("distances_with_cfos_chan_11_2500us.txt")
-dists_256, cfos_256 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_256_preamble.txt")
-dists_64, cfos_64 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_64_preamble.txt")
-dists_880kb, cfos_880kb = load_distances_from_distance_measurements("distances_with_cfos_880kbs.txt")
-# there was a bug in the code during channel selection, this data is measured with the fix in place
-dists7_corr, cfos7_corr = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_corrected_code.txt")
-dists3_corr, cfos3_corr = load_distances_from_distance_measurements("distances_with_cfos_chan_3_2500us_corrected_code.txt")
-dists_256_double, cfo_256_double = load_distances_from_distance_measurements("distances_with_cfos_double_256_preamble.txt")
-dists_256_long, cfo_256_long = load_distances_from_distance_measurements("distance_measurements_double_256_preamble_really_long.txt")
-dists_more_adv, cfo_more_adv = load_distances_from_distance_measurements("distance_measurements_long_with_more_advertisement.txt")
+# dists7, cfos7 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us.txt")
+# dists3, cfos3 = load_distances_from_distance_measurements("distances_with_cfos_chan_3.txt")
+# dists11, cfos11 = load_distances_from_distance_measurements("distances_with_cfos_chan_11_2500us.txt")
+# dists_256, cfos_256 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_256_preamble.txt")
+# dists_64, cfos_64 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_64_preamble.txt")
+# dists_880kb, cfos_880kb = load_distances_from_distance_measurements("distances_with_cfos_880kbs.txt")
+# # there was a bug in the code during channel selection, this data is measured with the fix in place
+# dists7_corr, cfos7_corr = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_corrected_code.txt")
+# dists3_corr, cfos3_corr = load_distances_from_distance_measurements("distances_with_cfos_chan_3_2500us_corrected_code.txt")
+# dists_256_double, cfo_256_double = load_distances_from_distance_measurements("distances_with_cfos_double_256_preamble.txt")
+# dists_256_long, cfo_256_long = load_distances_from_distance_measurements("distance_measurements_double_256_preamble_really_long.txt")
+# dists_more_adv, cfo_more_adv = load_distances_from_distance_measurements("distance_measurements_long_with_more_advertisement.txt")
+# dists_only_one_beacon, cfo_only_one_beacon = load_distances_from_distance_measurements("experiments/distance_measurements_only_one_beacon_sender.txt")
 
+dists_10ms, cfo_10ms  = load_distances_from_distance_measurements("experiments/distance_measurements_10ms.pkl")
+raw_distances_10ms = load_twr_from_measurements_file_with_slot_distances("experiments/distance_measurements_10ms.pkl")
 
+dists_no_comp, cfo_no_comp  = load_distances_from_distance_measurements("experiments/distance_measurements_no_comp.pkl")
+raw_distances_no_comp = load_twr_from_measurements_file_with_slot_distances("experiments/distance_measurements_no_comp.pkl")
 
+dists_no_autoack, cfo_no_autoack  = load_distances_from_distance_measurements("experiments/distance_measurements_no_autoack.pkl")
+raw_distances_no_autoack = load_twr_from_measurements_file_with_slot_distances("experiments/distance_measurements_no_autoack.pkl")
 
+fig, (ax3, ax4, ax5, ax6) = plt.subplots(4, 1)
+plot_twr_per_slot_dist(ax3, ax4, raw_distances_10ms[1][2], "chan 7 (PHY 5 PRF 64), 10ms slot length, 1 <-> 2, 128 preamble" )
+plot_twr_per_slot_dist(ax5, ax6, raw_distances_no_autoack[1][2], "chan 7 (PHY 5 PRF 64), 10ms slot length, 1 <-> 2, 128 preamble" )
+plot_ground_truth(ax4, toulouse_node_positions, 1, 2)
+plot_ground_truth(ax3, toulouse_node_positions, 1, 2)
+plot_ground_truth(ax6, toulouse_node_positions, 1, 2)
+plot_ground_truth(ax5, toulouse_node_positions, 1, 2)
 
 # fig, (ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9) = plt.subplots(9, 1, figsize=(15, 30))
 # plot_cfos_and_distances(ax1, filter_outliers(dists7[1][2]), cfos7[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 128 preamble" )
@@ -305,15 +352,15 @@ dists_more_adv, cfo_more_adv = load_distances_from_distance_measurements("distan
 # plot_ground_truth(ax8, toulouse_node_positions, 1, 2)
 # plot_ground_truth(ax9, toulouse_node_positions, 1, 2)
 
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 10))
-plot_cfos_and_distances(ax1, filter_outliers(dists_256_double[1][2]), cfo_256_double[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, double" )
-plot_cfos_and_distances(ax2, filter_outliers(dists_256_long[1][2]), cfo_256_long[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, really long" )
-plot_cfos_and_distances(ax3, dists_more_adv[2][1], cfo_more_adv[2][1], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, more adv" )
-plot_ground_truth(ax1, toulouse_node_positions, 1, 2)
-plot_ground_truth(ax2, toulouse_node_positions, 1, 2)
-plot_ground_truth(ax3, toulouse_node_positions, 1, 2)
+# fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(15, 10))
+# plot_cfos_and_distances(ax1, filter_outliers(dists_256_double[1][2]), cfo_256_double[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, double" )
+# plot_cfos_and_distances(ax2, filter_outliers(dists_256_long[1][2]), cfo_256_long[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, really long" )
+# plot_cfos_and_distances(ax3, filter_outliers(dists_more_adv[1][2]), cfo_more_adv[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, more adv" )
+# plot_cfos_and_distances(ax4, filter_outliers(dists_more_adv[2][1]), cfo_more_adv[2][1], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 2 <-> 1, 256 preamble, more adv" )
+# plot_ground_truth(ax1, toulouse_node_positions, 1, 2)
+# plot_ground_truth(ax2, toulouse_node_positions, 1, 2)
+# plot_ground_truth(ax3, toulouse_node_positions, 1, 2)
 
 # save as img
 plt.savefig("distances_image_complete.png")
 plt.show()
-

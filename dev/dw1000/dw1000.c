@@ -162,6 +162,7 @@ dw1000_init()
 
   dw1000.state = DW_STATE_IDLE;
 }
+
 /**
  * \brief Configure the transceiver to automatically switching
  *      between TX mode and RX modes.
@@ -1227,7 +1228,7 @@ dw_load_ldotune(void){
  * Need to use the WAKEUP pin to wakeup the transceiver.
  */
 void
-set_in_deep_sleep(void){
+set_in_deep_sleep(void) {
   /* Configure the Always ON system control */
   uint16_t aon_wcfg = 0; /* AON Wake-up Configuration */
   uint8_t aon_ctrl = 0; /* AON Control */
@@ -1252,7 +1253,7 @@ set_in_deep_sleep(void){
   aon_wcfg |= DW_ONW_LLDE_MASK;
 
   /* On wake-up load the LDO tune value */
-  if(dw_is_ldotune()){
+  if(dw_is_ldotune()) {
     aon_wcfg |= DW_ONW_LLDO_MASK;
   }
 
@@ -1718,6 +1719,7 @@ dw_get_seq_no()
   static uint8_t seq_no = 0;
   return seq_no++;
 }
+
 /**
  * \brief Converts from floating point milliseconds to device time ticks.
  * \param[in]  t    Time in milliseconds (ms).
@@ -1728,6 +1730,7 @@ dw_ms_to_device_time(float t)
 {
   return (uint64_t)(t * DW_MS_TO_DEVICE_TIME_SCALE);
 }
+
 /**
  * \brief Get the component unique id.
  * \return Component unique id.

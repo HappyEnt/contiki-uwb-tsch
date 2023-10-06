@@ -97,8 +97,9 @@
   /* UWB_T_SHR = (Preamble lenght + 16) at 6.8 mbps */
   #define UWB_T_SHR                  ((uint16_t) (128+16))
   /* #define UWB_T_SHR                  ((uint16_t) (256+16)) */
-  #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   2500
+  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   2500 */
   /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   5000 */
+  #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   5000
 
 #elif DW1000_DATA_RATE == DW_DATA_RATE_850_KBPS
   #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_512
@@ -108,7 +109,7 @@
 
 #else /* DW1000_DATA_RATE == DW_DATA_RATE_110_KBPS */
   #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_1024
-  /* UWB_T_SHR = (Preamble lenght + 64) at 110 mbps */
+  /* UWB_T_SHR = (Preamble lenght + 64) at 110 kbps */
   #define UWB_T_SHR                  ((uint16_t) (1024+64))
 
   #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   25000
@@ -142,7 +143,7 @@
   /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){3, 7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16 */
   /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  2 */
 
-  #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){3} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
+  #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
   #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    1
   
   /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){ 3, 4, 7, 10} */
@@ -160,7 +161,7 @@
 // NOTE if we use only a single channel here, the tsch join process won't change channels
 // for some reason this does result in beacons not being received anymore, if the receiver
 // did not receive the beacon directly at turn on
-#define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){3, 7, 11}
+#define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){3, 7}
 
   // #define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){ 3}
   // #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  6

@@ -62,6 +62,7 @@
 #include "dw1000-ranging-bias.h"
 #include "deca_device_api.h"
 #include "tsch-slot-operation.h"
+#include "uart0.h"
 
 #if TSCH_MTM_LOCALISATION
 
@@ -143,6 +144,21 @@ void mtm_reset_rx_queue() {
     struct mtm_rx_queue_item *item;
     while((item = list_pop(rx_send_queue)) != NULL) {
         memb_free(&mtm_prop_rx_memb, item);
+    }
+}
+
+void mtm_reset() {
+    // clear all tables
+    mtm_reset_rx_queue();
+
+    struct mtm_pas_tdoa *item;
+    while((item = list_pop(pas_tdoa_list)) != NULL) {
+        memb_free(&mtm_pas_tdoa_memb, item);
+    }
+
+    struct mtm_neighbor *n;
+    while((n = list_pop(ranging_neighbor_list)) != NULL) {
+        memb_free(&mtm_prop_neighbor_memb, n);
     }
 }
 
@@ -311,7 +327,7 @@ void mtm_slot_end_handler(uint16_t timeslot) {
 
 // We require that the upper-layer marks which timeslot marks the round end
 // see above comment why this might not be the best idea
-void mtm_set_round_end(uint16_t timeslot) {
+void mtm_set_round_end(uint8_t timeslot) {
     round_end_timeslot = timeslot;
     round_counter = 0;
 }
@@ -325,9 +341,10 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
     if (list_length (rx_send_queue) > TSCH_MTM_PROP_MAX_MEASUREMENT) {
         _PRINTF("MTM: RX queue full, dropping received timestamp\n");
 
-        // this should never happen, so lets reset the queue
-        mtm_reset_rx_queue();
-        return;
+        while(list_length(rx_send_queue) > TSCH_MTM_PROP_MAX_MEASUREMENT) {
+            t = list_pop(rx_send_queue);
+            memb_free(&mtm_prop_rx_memb, t);
+        }
     }
 
     // since we are space constrained if there is already a timestamp for the neighbor, we will replace that entry in our queue
@@ -352,6 +369,7 @@ void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor,
             list_add(rx_send_queue, t);
         } else {
             _PRINTF("MTM: Could not allocate memory for reception timestamp\n");
+            
             return;
         }
     }
@@ -736,10 +754,13 @@ int tsch_packet_create_multiranging_packet(
   // write amount of measurements
   uint8_t amount_of_measurements = list_length(rx_send_queue);
 
+  /* printf("s %d\n", amount_of_measurements); */
+
   memcpy(&buf[curr_len], &amount_of_measurements, sizeof(uint8_t));
   curr_len = curr_len + sizeof(uint8_t);
 
-  for(t = list_head(rx_send_queue); t != NULL; t = list_item_next(t)) {
+  // free all allocated memory for all measurements again
+  while((t = list_pop(rx_send_queue)) != NULL) {
       memcpy(&buf[curr_len], &t->neighbor_addr, sizeof(uint8_t));
       curr_len = curr_len + sizeof(uint8_t);
       memcpy(&buf[curr_len], &t->timeslot_offset, sizeof(uint8_t));
@@ -747,12 +768,7 @@ int tsch_packet_create_multiranging_packet(
       
       packet_buf_copy_timestamp(t->rx_timestamp, &buf[curr_len]);
       curr_len = curr_len + 5*sizeof(uint8_t);
-
-      _PRINTF("put %d -> %u%u \n", t->neighbor_addr, (uint32_t)(t->rx_timestamp >> 32), (uint32_t)(t->rx_timestamp & 0xFFFFFFFF));
-  }
-
-  // free all allocated memory for all measurements again
-  while((t = list_pop(rx_send_queue)) != NULL) {
+      
       memb_free(&mtm_prop_rx_memb, t);
   }
 
@@ -822,6 +838,9 @@ tsch_packet_parse_multiranging_packet(
 
   
   memcpy(&amount_of_measurements, &buf[curr_len], sizeof(uint8_t));
+
+  /* printf("%d\n", amount_of_measurements); */
+  
   curr_len = curr_len + sizeof(uint8_t);
   for(int i = 0; i < amount_of_measurements; i++) {
       ranging_addr_t neighbor;

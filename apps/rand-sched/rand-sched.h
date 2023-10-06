@@ -44,6 +44,8 @@
 
 void rand_sched_init(uint8_t max_mtm_slots);
 void rand_sched_set_timeslot(uint8_t timeslot);
+void rand_sched_start();
+void rand_sched_stop();
 
 // If timeslot is set fixed, a node with never backoff from its choice.
 // This is used for nodes that should act as anchors

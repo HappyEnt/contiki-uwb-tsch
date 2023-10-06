@@ -64,6 +64,15 @@
 #endif
 
 /*******************************************************/
+/************* Experiment Configuration **************/
+/*******************************************************/
+#define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
+#define DWM1001_LOAD_OTP_ANTENNA_DELAY 1
+#define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 1
+#define MTM_CALCULATE_PROCESSING_DELAY 0
+
+
+/*******************************************************/
 /********************* Enable TSCH *********************/
 /*******************************************************/
 
@@ -187,12 +196,11 @@
 #endif
 
 // we need really short timeslot lengths
-/* #undef TSCH_CONF_DEFAULT_TIMESLOT_LENGTH */
-/* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH 2500 */
-
 /* #define TSCH_CONF_HW_FRAME_FILTERING    0 */
 /* #define TSCH_SCHEDULE_CONF_WITH_6TISCH_MINIMAL 1 */
 /* #define TSCH_CONF_WITH_LINK_SELECTOR 1 */
+
+#define DW1000_CONF_AUTOACK 0
 
 #undef DW1000_DATA_RATE
 /* #define DW1000_DATA_RATE DW_DATA_RATE_110_KBPS */

@@ -359,8 +359,6 @@ dw1000_driver_init(void)
 {
   PRINTF("dw1000_driver_init\r\n");
 
-  printf("initializing DW1000\r\n");
-
   dw1000_arch_init();
   dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_INIT_STATE);
 
@@ -547,7 +545,7 @@ dw1000_driver_transmit(unsigned short payload_len)
     dw_read_reg(DW_REG_DX_TIME, DW_LEN_DX_TIME, (uint8_t *)&dx_time);
     // printf("dw1000_driver_transmit init %lu %llu %llu\n", RADIO_TO_US(dx_time-sys_time), sys_time, dx_time);
     if(sys_time > dx_time){
-      printf("dw1000_driver_transmit timeout %lu\n", RADIO_TO_US(sys_time-dx_time));
+      PRINTF("dw1000_driver_transmit timeout %lu\n", RADIO_TO_US(sys_time-dx_time));
     }
     /* We wait for a maximum of 5ms to be improve in case of lower bitrate */
     BUSYWAIT_UPDATE_UNTIL(
@@ -557,7 +555,7 @@ dw1000_driver_transmit(unsigned short payload_len)
                     (sys_time > dx_time),
                     (5000));
     if(sys_time < dx_time) {
-      printf("dw1000_driver_transmit wait too long %lu\n", RADIO_TO_US(dx_time-sys_time));
+      PRINTF("dw1000_driver_transmit wait too long %lu\n", RADIO_TO_US(dx_time-sys_time));
     }
   }
   else {
@@ -660,6 +658,8 @@ dw1000_driver_transmit(unsigned short payload_len)
   // printf("tx time %ld (ms)\n", RTIMERTICKS_TO_US(t1-t0) );
   return tx_return;
 }
+
+
 /**
  * \brief     prepare and transmit a packet.
  *            This takes a pointer to the payload and an
@@ -1170,8 +1170,8 @@ dw1000_driver_set_value(radio_param_t param, radio_value_t value)
   case RADIO_SLEEP_STATE:
     SLEEP_SET();
     if(value == RADIO_SLEEP) {
+
             dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID);
-      // printf("put radio in sleep\n");
         assert(0xDECA0130 == dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID));
         // dw_conf_print();
       dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_INIT_STATE);
@@ -1989,8 +1989,8 @@ dw1000_schedule_tx_mtm(uint16_t delay_us)
   uint64_t schedule_time = dw_get_device_time();
   /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
 
-  schedule_time = schedule_time + US_TO_RADIO(delay_us);
-  schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */
+  schedule_time = (schedule_time + US_TO_RADIO(delay_us)) % DW_TIMESTAMP_MAX_VALUE;
+  schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */  
 
   dw_set_dx_timestamp(schedule_time);
 

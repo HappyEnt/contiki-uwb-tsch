@@ -53,10 +53,10 @@
 /*******************************************************/
 #define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
 #define DWM1001_LOAD_OTP_ANTENNA_DELAY 1
-#define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 1
+#define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 0
 #define RAND_SCHED_RULES_MIN_NEIGHBORS 1
 #define MTM_CALCULATE_PROCESSING_DELAY 0
-#define EXPERIMENT_MTM_ROUND_LENGTH 14
+#define EXPERIMENT_MTM_ROUND_LENGTH 10
 #define PROJECT_WITH_REDUCED_RANGE 0
 #define WITH_UART_OUTPUT_RANGE 0
 #define WITH_UART_OUTPUT_COUNTS 1

@@ -52,7 +52,7 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 // depends on frame length
 #define TSCH_MTM_PROP_MAX_NEIGHBORS 15
 // defines the maximum amount of measurements we will store
-#define TSCH_MTM_PROP_MAX_MEASUREMENT 10
+#define TSCH_MTM_PROP_MAX_MEASUREMENT 15
 
 
 // define ranging_addr_t as uint8_t for now
@@ -154,10 +154,11 @@ void add_mtm_reception_timestamp(
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
 void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset);
-void mtm_set_round_end(uint16_t timeslot);
+void mtm_set_round_end(uint8_t timeslot);
 void mtm_slot_end_handler(uint16_t timeslot);
 void set_mtm_tx_slot(uint8_t timeslot);
 void mtm_reset_rx_queue();
+void mtm_reset();
 list_t tsch_prop_get_neighbor_list();
 list_t tsch_prop_get_tdoa_list();
 

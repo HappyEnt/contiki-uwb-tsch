@@ -2339,7 +2339,11 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
           /* add_mtm_reception_timestamp(&current_link->addr, &tsch_current_asn, UINT64_MAX, UINT64_MAX, NULL, 0); */
       }
 
-      tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);      
+      tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
+      
+      uint16_t rx_timeout_us;
+      rx_timeout_us = 0;
+      NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
   }
 
   mtm_slot_end_handler(current_link->timeslot);

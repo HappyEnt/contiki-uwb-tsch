@@ -52,8 +52,15 @@
 #include "tsch.h"
 #include <stdint.h>
 
-#define DEBUG DEBUG_PRINT
-#include "net/ip/uip-debug.h"
+/* #define DEBUG DEBUG_PRINT */
+/* #include "net/ip/uip-debug.h" */
+
+#define DEBUG_RAND 0
+#if DEBUG_define
+#RAND PRINTF(...) printf(__VA_ARGS__)
+#else
+#define PRINTF(...)
+#endif
 
 #define LOG_LLU_MARK "0x%08x%08x"
 #define LOG_LLU(bigint) (uint32_t)(((bigint) >> 32)), (uint32_t)((bigint) & 0xFFFFFFFF)
@@ -65,9 +72,7 @@
 
 PROCESS(rand_sched_process, "RANDSCHED");
 
-/* #define RAND_SCHED_MAX_NEIGHBORS 40 */
-
-#define MAX_LAST_SEEN_INTERVAL CLOCK_SECOND*1
+#define MAX_LAST_SEEN_INTERVAL CLOCK_SECOND
 
 static struct etimer rand_schedule_phase_timer;
 /* static struct etimer decision_evaluation_timer; */
@@ -121,34 +126,12 @@ static void eval_print_rand_sched_status();
 static uint8_t neighbor_discovery_running = 0;
 
 
-// the higher the time we own the timeslot already is, the lower the probability should be
-// that we throw our pick away. The highest probability is hereby 3/4 to keep the timeslot
-// at a period of 10 seconds
-static uint8_t backoff_lottery(clock_time_t time_since_pick) {
-    uint8_t backoff = 0;
-    if(time_since_pick > CLOCK_SECOND*10) {
-        backoff = 1;
-    } else if(time_since_pick > CLOCK_SECOND*5) {
-        backoff = 2;
-    } else if(time_since_pick > CLOCK_SECOND*2) {
-        backoff = 3;
-    } else if(time_since_pick > CLOCK_SECOND) {
-        backoff = 4;
-    } else {
-        backoff = 5;
-    }
-
-    return random_rand() % backoff;
-}
-
-/* static void backoff */
-
 static void discovery_recv(struct neighbor_discovery_conn *c,
     const linkaddr_t *from, uint16_t val) {
     clock_time_t now = clock_time();
     uint8_t our_timeslot = check_have_timeslot();
 
-    printf("recv, %u\n", from->u8[LINKADDR_SIZE-1]);
+    PRINTF("recv, %u\n", from->u8[LINKADDR_SIZE-1]);
 
     if(!our_timeslot || node_state.node_is_fixed)
         return;
@@ -165,7 +148,7 @@ static void discovery_recv(struct neighbor_discovery_conn *c,
 
     if (n == NULL || ((now - n->last_observed_direct) > MAX_LAST_SEEN_INTERVAL)) {
         /* || val == our_timeslot */
-        printf("P: boff, %u\n", from->u8[LINKADDR_SIZE-1]);
+        /* printf("P: boff, %u\n", from->u8[LINKADDR_SIZE-1]); */
         remove_transmit_link(our_timeslot);
         sched_neighbor_discovery_stop();
         neighbor_discovery_set_val(&neighbor_discovery, 0);
@@ -180,7 +163,6 @@ void rand_set_timeslot_fixed(uint8_t enable) {
 
 
 static void discovery_sent(struct neighbor_discovery_conn *c) {
-    printf("snt\n");
 }
 
 static const struct neighbor_discovery_callbacks neighbor_discovery_calls = { .recv = discovery_recv, .sent = discovery_sent };
@@ -190,9 +172,9 @@ static void sched_neighbor_discovery_start() {
   uint8_t our_timeslot = check_have_timeslot();
   neighbor_discovery_open(&neighbor_discovery,
       42,
-      CLOCK_SECOND*2,
       CLOCK_SECOND,
-      CLOCK_SECOND*4,
+      CLOCK_SECOND/4,
+      CLOCK_SECOND,
       &neighbor_discovery_calls);
   neighbor_discovery_start(&neighbor_discovery, our_timeslot);
   neighbor_discovery_running = 1;
@@ -208,6 +190,10 @@ static void sched_neighbor_discovery_stop() {
 #define MTM_ROUND_START 2
 
 void rand_sched_init(uint8_t max_mtm_slots) {
+
+    // clear all existing slotframes
+    tsch_schedule_remove_all_slotframes();
+    mtm_reset();
 
     node_state.max_slots = max_mtm_slots;
     
@@ -250,44 +236,20 @@ void rand_sched_init(uint8_t max_mtm_slots) {
         &tsch_broadcast_address,
         MTM_ROUND_START + node_state.max_slots + 1,
         0);    
-
-    
-    process_start(&rand_sched_process, NULL);
 }
 
-/*  static uint8_t rule_enough_neighbors(uint8_t min_neighbors) { */
-/*     // if we don't have enough neighbors (as measured by our mtm table) we don't extend */
+void rand_sched_start() {
+    process_start(&rand_sched_process, NULL);    
+}
 
-/*     struct mtm_neighbor *n = NULL; */
-/*     uint8_t num_neighbors = 0; */
-    
-/*     for (n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) { */
-/*         if((clock_time() - n->last_observed) > CLOCK_SECOND*2) { */
-/*             continue; */
-/*         } */
-/*         num_neighbors++; */
-/*     } */
-    
-/*     return num_neighbors >= min_neighbors; */
-/* } */
+void rand_sched_stop() {
+    // stop neighbor discovery
+    sched_neighbor_discovery_stop();
 
-/* static uint8_t rule_maximum_direct_neighbors(uint8_t max_capacity) { */
-/*     struct mtm_neighbor *n = NULL; */
-/*     uint8_t num_neighbors = 0; */
-    
-/*     for (n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) { */
-/*         if((clock_time() - n->last_observed) > CLOCK_SECOND*2) { */
-/*             continue; */
-/*         } */
-/*         num_neighbors++; */
-/*     } */
-    
-/*     return num_neighbors <= max_capacity; */
-/* } */
-
-/* static uint8_T rule_neighbor_capacity(uint8_t max_capacity) { */
-/*     // if we have too many neighbors (as measured by our mtm table) we don't extend */
-/* } */
+    // also ensure timer is not runnning
+    ctimer_stop(&start_neighbor_discovery_timer);
+    process_exit(&rand_sched_process);
+}
 
 // returns a free timeslot, or 0 if no free timeslot exists.  Note that timeslot 0 is always our
 // shared timeslot, so it may never be associated for mtm usage
@@ -306,18 +268,17 @@ static uint8_t choose_free_timeslot() {
     /* // iterate over tsch_prop_get_neighbor_list(); */
     struct mtm_neighbor *n = NULL;
     for(n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) {
-        if((now - n->last_observed_direct) > CLOCK_SECOND*5 && (now - n->last_observed_indirect) > CLOCK_SECOND*5) {
-            continue;
+        if((now - n->last_observed_direct) < MAX_LAST_SEEN_INTERVAL || (now - n->last_observed_indirect) < MAX_LAST_SEEN_INTERVAL) {
+            occupied_slots[n->observed_timeslot] = 1;            
         }
-        occupied_slots[n->observed_timeslot] = 1;
     }
 
     // print occupancy map
-    printf("occupancy map: ");
+    PRINTF("occupancy map: ");
     for (uint8_t i = 0; i < node_state.max_slots+MTM_ROUND_START; i++) {
-        printf("%d", occupied_slots[i]);
+        PRINTF("%d", occupied_slots[i]);
     }
-    printf("\n");
+    PRINTF("\n");
 
     uint8_t free_slot_count = 0;
     for (uint8_t i = 0; i < node_state.max_slots+MTM_ROUND_START; i++) {
@@ -349,7 +310,7 @@ static uint8_t choose_free_timeslot() {
 
 // for now the lottery is a coin toss
 static uint8_t play_lottery() {
-    return !(random_rand() % 2);
+    return !(random_rand() % 4);
 }
 
 static uint8_t check_have_timeslot() {
@@ -373,7 +334,7 @@ static void handle_won_lottery() {
     // uniformly pick timeslot
     uint8_t timeslot = choose_free_timeslot();
     if(timeslot) {
-        printf("Picked timeslot %d\n", timeslot);
+        PRINTF("Picked timeslot %d\n", timeslot);
         rand_sched_set_timeslot(timeslot);
     }
 }
@@ -390,7 +351,7 @@ static struct drand_neighbor_state* get_or_create_neighbor_entry(ranging_addr_t 
         // create entry
         r = memb_alloc(&direct_neighbor_memb);
         if(r == NULL) {
-            printf("Could not allocate neighbor entry\n");
+            PRINTF("Could not allocate neighbor entry\n");
         } else {
             // add to list
             list_add(direct_neighbor_list, r);
@@ -401,37 +362,11 @@ static struct drand_neighbor_state* get_or_create_neighbor_entry(ranging_addr_t 
     return r;
 }
 
-    
-uint8_t mtm_neighbor_is_alive(struct mtm_neighbor *n) {
-    clock_time_t now = clock_time();
-    
-    if((now - n->last_observed_direct) < CLOCK_SECOND) {
-        return 1;
-    }
-    
-    return 0;
-}
-
 static void clear_neighbor_list() {
     // remove all entries from the neighbor direct list
     struct drand_neighbor_state *r = NULL;
     while((r = list_pop(direct_neighbor_list)) != NULL) {
         memb_free(&direct_neighbor_memb, r);
-    }
-}
-
-static void save_alive_neighbors_timestamp_counters() {
-    struct mtm_neighbor *n = NULL;
-
-    clear_neighbor_list();
-    
-    for (n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) {
-        if (mtm_neighbor_is_alive(n)) {
-            struct drand_neighbor_state *r = get_or_create_neighbor_entry(n->neighbor_addr);
-            if (r != NULL) {
-                r->prev_total_found_ours = n->total_found_ours_counter;
-            }
-        }
     }
 }
 
@@ -442,7 +377,7 @@ uint8_t check_eligibility(clock_time_t now) {
     uint8_t num_active_neighbors = 0;
     
 #if RAND_SCHED_RULES_WITH_PLANARITY_CHECK
-    int8_t edge_count = 0, node_count = 1;
+    int16_t edge_count = 0, node_count = 1;
 #endif
     
     for(n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) {
@@ -467,16 +402,16 @@ uint8_t check_eligibility(clock_time_t now) {
         }
     }
 
-    /* if( edge_count > (3 * node_count - 6)) { */
+    if( node_count >= 3 && edge_count > (3 * node_count - 6)) {
+        eligible = 0;
+    }
+
+    /* if( edge_count > (3 * node_count)) { */
     /*     eligible = 0; */
     /* } */
-
-    if( edge_count > (3 * node_count - 2)) {
-        eligible = 0;
-    }    
 #endif
     
-    if(num_active_neighbors < 3) {
+    if(num_active_neighbors < RAND_SCHED_RULES_MIN_NEIGHBORS) {
         eligible = 0;
     }
 
@@ -495,7 +430,7 @@ static void remove_transmit_link(uint8_t timeslot) {
     if(success) {
         tsch_schedule_add_link(sf_eb, LINK_OPTION_RX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, timeslot, 0);        
     } else {
-        printf("P: Could not remove link\n");
+        PRINTF("P: Could not remove link\n");
     }
     
     
@@ -504,87 +439,17 @@ static void remove_transmit_link(uint8_t timeslot) {
 static void add_transmit_link(uint8_t timeslot) {
     struct tsch_slotframe *sf_eb = tsch_schedule_get_slotframe_by_handle(0);
     if(sf_eb != NULL) {
-        printf("P: Setting link to tx\n");
         uint8_t success = tsch_schedule_remove_link_by_timeslot(sf_eb, timeslot);
 
         if(success) {
             tsch_schedule_add_link(sf_eb, LINK_OPTION_TX, LINK_TYPE_PROP_MTM, &tsch_broadcast_address, timeslot, 0);        
         } else {
-            printf("P: Could not add link\n");
+            PRINTF("P: Could not add link\n");
         }
     }
 }
-
-/* static void backoff_from_decision_probabilistic(uint8_t timeslot) { */
-/* } */
-
-
-// check whether timeslot was a good decision
-static uint8_t good_decision(uint8_t timeslot) {
-    printf("check dec\n");
-    
-    // first check for collisions
-    /* uint8_t collisions = 0; */
-    // look through neighbor table if we find any collisions
-    /* struct mtm_neighbor *n = NULL; */
-    /* for(n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) { */
-    /*     printf("neighbor %u, timeslot %u\n", n->neighbor_addr, n->observed_timeslot); */
-    /*     // outdated neighbor entries should not influence our decision */
-    /*     if(n->last_observed_direct > node_state.picked_timeslot_at || n->last_observed_indirect > node_state.picked_timeslot_at) { */
-    /*         if(n->observed_timeslot == timeslot) { */
-    /*             collisions++; */
-    /*             printf("Collision with node %u in timeslot %u\n", n->neighbor_addr, timeslot); */
-    /*         } */
-    /*     } */
-    /* } */
-
-    /* if(collisions > 10) { */
-    /*     printf("We had %u collisions\n", collisions); */
-    /*     return 0; */
-    /* } */
-
-/*     // search matching entry in our rand-sched neighbor discovery service */
-    uint8_t found_in_all_active_neighbors = 0;
-    struct drand_neighbor_state *r = NULL;
-    for(r = list_head(direct_neighbor_list); r != NULL; r = list_item_next(r)) {
-        struct mtm_neighbor *n = NULL;
-        for(n = list_head(tsch_prop_get_neighbor_list()); n != NULL; n = list_item_next(n)) {
-            if(n->neighbor_addr == r->addr) {
-                printf("found tsch prop entry \n");
-                break;
-            }
-        }
-
-        if (n != NULL) {
-            if (n->total_found_ours_counter - r->prev_total_found_ours < 1) {
-                found_in_all_active_neighbors = 0;
-            }
-        }
-    }
-
-    if (found_in_all_active_neighbors) {
-        return 1;
-    }
-
-    return 0;
-}
-
 
 static void eval_print_rand_sched_status() {
-    /* struct mtm_neighbor *mtm_neighbor = NULL; */
-    /* struct drand_neighbor_state *alive_neighbor = NULL; */
-    /* printf("tpnl, "); */
-    
-    /* for(mtm_neighbor = list_head(tsch_prop_get_neighbor_list()); mtm_neighbor != NULL; mtm_neighbor = mtm_neighbor->next) { */
-    /*     printf("%u, ", mtm_neighbor->neighbor_addr); */
-    /* } printf("\n"); */
-
-    /* for(alive_neighbor = list_head(direct_neighbor_list); alive_neighbor != NULL; alive_neighbor = alive_neighbor->next) { */
-    /*     printf("%u, ", alive_neighbor->addr); */
-    /* } printf("\n"); */
-
-    printf("ndr, %u\n", neighbor_discovery_running);
-
     uint8_t timeslot = check_have_timeslot();
 
     printf("ts, %u\n", timeslot);
@@ -608,20 +473,17 @@ void rand_sched_set_timeslot(uint8_t timeslot) {
     /* tsch_set_send_beacons(1); */
     node_state.picked_timeslot_at = clock_time();
     /* save_alive_neighbors_timestamp_counters(); */
-    ctimer_set(&start_neighbor_discovery_timer, CLOCK_SECOND/2, &sched_neighbor_discovery_start, NULL);    
+
+    ctimer_set(&start_neighbor_discovery_timer, CLOCK_SECOND/4, &sched_neighbor_discovery_start, NULL);
+    /* sched_neighbor_discovery_start(); */
 }
 
 PROCESS_THREAD(rand_sched_process, ev, data)
 {
   PROCESS_BEGIN();
 
-  printf("starting rand_sched_process\n");
-  
-  /* etimer_set(&neighbor_discovery_phase_timer, CLOCK_SECOND * 40); */
-
-  /* etimer_set(&initial_wait_timer, CLOCK_SECOND * 10); // wait 10 seconds before starting */
-  /* PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&initial_wait_timer)); */
-  
+  PRINTF("starting rand_sched_process\n");
+    
   etimer_set(&rand_schedule_phase_timer, CLOCK_SECOND/2);
   
   while(1) {
@@ -637,7 +499,7 @@ PROCESS_THREAD(rand_sched_process, ev, data)
               eval_print_rand_sched_status();
           
               if(!our_timeslot && play_lottery() && check_eligibility(now)) {
-                  printf("won\n");
+                  PRINTF("won\n");
                   handle_won_lottery();
               }
 

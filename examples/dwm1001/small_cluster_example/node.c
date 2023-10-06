@@ -101,7 +101,6 @@ net_init(uint8_t is_coordinator)
 }
 
 
-
 #define LOG_CONFIG_ITEM(NAME) do { printf(";; %s = %d\n", #NAME, NAME); } while(0)
 
 // useful for evaluation, print configuration into log, prefix with ;; for easy parsing
@@ -158,13 +157,12 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
 
   static struct distance_measurement *m = NULL;
 
-
   while(1) {
     PROCESS_YIELD();
     /* receive a new propagation time measurement */
     if(ev == PROCESS_EVENT_MSG) {
-        measurement_count++;
         m = (struct distance_measurement *) data;
+        measurement_count++;
 #if WITH_UART_OUTPUT_RANGE
         float dist = time_to_dist(m->time);
         struct tsch_asn_t asn = m->asn;
@@ -239,6 +237,9 @@ PROCESS_THREAD(node_process, ev, data)
 
   etimer_set(&network_status_timer, CLOCK_SECOND);
 
+  // nodes: 29 + 39 + 38 + 45 + 35 + 34 + 33 + 30 + 26 + 43 + 41
+  // NOte 42, 37 do not receive serial input
+
   /* Print out routing tables every minute */
   etimer_set(&et, CLOCK_SECOND/4);
   while(1) {
@@ -251,11 +252,11 @@ PROCESS_THREAD(node_process, ev, data)
 
       if(etimer_expired(&network_status_timer)) {
           uart_write_link_addr();
-          etimer_reset(&network_status_timer);
-
-          #if WITH_UART_OUTPUT_COUNTS
+#if WITH_UART_OUTPUT_COUNTS
           printf("m, %u\n", measurement_count);
-          #endif
+#endif
+          
+          etimer_reset(&network_status_timer);
       }
 
       if(ev == serial_line_event_message) {
@@ -295,8 +296,8 @@ PROCESS_THREAD(node_process, ev, data)
               }
               }
               
-              /* etimer_set(&et, CLOCK_SECOND * 4); */
-              /* PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et)); */
+              etimer_set(&et, CLOCK_SECOND * 4);
+              PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
               switch(role->role) {
               case MOBILE: {

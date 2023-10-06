@@ -201,15 +201,18 @@ PROCESS_THREAD(node_process, ev, data)
   
   if(linkaddr_cmp(&node_0_ll, &linkaddr_node_addr)) {
       printf("=node type 0 initiator=\n");
-      net_init(1);      
+      net_init(1);
+      tsch_set_send_beacons(1);      
       slotframe_evaluation_length_scheduler_init(100, 0);
   } else if(linkaddr_cmp(&node_1_ll, &linkaddr_node_addr)) {
       printf("=node type 1 responder =\n");
-      net_init(0);      
+      net_init(0);
+      tsch_set_send_beacons(0);      
       slotframe_evaluation_length_scheduler_init(100, 1);
   } else {
       printf("=node type 2 passive =\n");
-      net_init(0);      
+      net_init(0);
+      tsch_set_send_beacons(0);
       slotframe_evaluation_length_scheduler_init(100, 2);
   }
   
@@ -235,19 +238,21 @@ PROCESS_THREAD(node_process, ev, data)
               if(distance > UINT8_MAX || distance < 1) {
                   printf("invalid distance\n");
               }
+
+              /* uint8_t sleep_after_rx = dwt_read32bitoffsetreg(PMSC_ID, PMSC_CTRL1_OFFSET) */
               
               generate_slotframe_with_distance(distance);
           }
       }
 
       // if tsch_is_associated add for each neighbor a ranging slot
-      if(tsch_is_associated) {
-          leds_toggle(LEDS_3);
+      /* if(tsch_is_associated) { */
+      /*     leds_toggle(LEDS_3); */
 
-          printf("tschass 1\n");
-      } else {
-          printf("tschass 0\n");          
-      }
+      /*     printf("tschass 1\n"); */
+      /* } else { */
+      /*     printf("tschass 0\n");           */
+      /* } */
       
       uart_write_link_addr();
 

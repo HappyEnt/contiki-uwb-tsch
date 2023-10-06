@@ -404,7 +404,7 @@ node_list = get_node_list("toulouse", "dwm1001:dw1000")
 node_positions = get_position_mapping(node_list)
 node_ids = list(node_positions.keys())
 network_graph = generate_networkx_graph("toulouse", "dwm1001:dw1000")
-twr, tdoa, timeslots = load_experiment_data("experiment_full_cluster_still_stall")
+twr, tdoa, timeslots = load_experiment_data("experiment_full_cluster_5ms_no_crash_2")
 combined = get_combined_measurements(node_ids, tdoa, twr)
 timestamps = get_timestamps_dict(combined)
 
@@ -412,12 +412,12 @@ start, stop, duration = calculate_experiment_duration(tdoa, twr)
 
 # plot_timeslot_hist(node_ids, timeslots)
 
-# plot_frequency_vs_time(timestamps, start, stop, 1)
+# plot_frequency_vs_time(timestamps, start, stop, 0.5)
 # plot_per_unique_measurement_frequency_vs_time(combined, start, stop, 1, "dwm1001-2")
 
-# plot_validity_for_all(combined, start, stop, 1)
+plot_validity_for_all(combined, start, stop, 1)
 
 # calculate_all_frequencies(combined)
 
 # print(f"We have {len(timeslot_history)} timeslot mappings")
-plot_timeslot_history_as_gif(network_graph, timeslots)
+# plot_timeslot_history_as_gif(network_graph, timeslots)

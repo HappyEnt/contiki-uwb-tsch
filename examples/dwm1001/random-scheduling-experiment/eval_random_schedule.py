@@ -14,7 +14,8 @@ ranging_timeslot_mapping = {}
 timeslot_history = []
 devaddr1_mapping = {}
 associated = {}
-
+most_recent_measurement_timestamp = None
+destroy_timestamps = []
 tdoa_measurements = {}
 twr_measurements = {}
 total_measurements = {}
@@ -22,10 +23,15 @@ initial_timestamp = {}
 initial_asn = {}
 max_package_lengths = {}
 
+tsch_timesyncs = {}
+
 finished = False 
 
 def read_line(identifier, line):
     global finished
+
+    if line.startswith("P:"):
+        print(f"{identifier}: {line}")
 
     # # if line starts with TA, write out linkaddr, line looks like TA, %u, %u  whereby %u, %u are the high and low byte of the address respectively
     if line.startswith("TA,"):
@@ -44,6 +50,13 @@ def read_line(identifier, line):
             max_package_lengths[identifier] = int(line.split(',')[1])
         max_package_lengths[identifier] = max(max_package_lengths[identifier], int(line.split(',')[1]))
 
+    elif line.startswith("s,"):
+        curr_time = time.time()
+        if identifier not in tsch_timesyncs:
+            tsch_timesyncs[identifier] = []
+
+        tsch_timesyncs[identifier].append(curr_time)
+
     elif line.startswith("TW,"):
         timeslot_asn = int(line.split(',')[2])
 
@@ -52,6 +65,7 @@ def read_line(identifier, line):
             initial_timestamp[identifier] = time.time()
         
         timeslot_time = initial_timestamp[identifier] + (timeslot_asn - initial_asn[identifier]) * 0.005
+        most_recent_measurement_timestamp = timeslot_time
         other_mac = int(line.split(',')[1])
         dist = float(line.split(',')[3])
 
@@ -75,6 +89,7 @@ def read_line(identifier, line):
             initial_timestamp[identifier] = time.time()
         
         timeslot_time = initial_timestamp[identifier] + (timeslot_asn - initial_asn[identifier]) * 0.005
+        most_recent_measurement_timestamp = timeslot_time
         
         other_mac_1 = int(line.split(',')[1])
         other_mac_2 = int(line.split(',')[2])
@@ -94,6 +109,13 @@ def read_line(identifier, line):
     # elif line.startswith("received line"):
     #     print(line)
 
+
+FIXED_ANCHORS = [
+    "dwm1001-5",
+    "dwm1001-14",
+    "dwm1001-42",
+]
+
 def main():
     global finished
     """ Launch serial aggregator.
@@ -104,6 +126,7 @@ def main():
     opts.with_a8 = False # redirect a8-m3 serial port
     opts.with_dwm1001 = True # redirect a8-m3 serial port    
     nodes = SerialAggregator.select_nodes(opts)
+    amount_to_destroy = 1
     time_since_last = time.time()
     with SerialAggregator(nodes, line_handler=read_line) as aggregator:
         while not finished:
@@ -114,12 +137,17 @@ def main():
                 timeslot_history.append(ranging_timeslot_mapping.copy())
 
                 # randomly select one node and send "t 4\n" to it
-                if time.time() - time_since_last > 30:
+                if time.time() - time_since_last > 10000:
                     print("destroys the network")
                     time_since_last = time.time()
-                    node_to_destroy = [random.choice(nodes)]
-                    timeslot_history[-1]["destroy"] = node_to_destroy[0] # we add an destroy entry to the dictionary, so we can later add markings during evaluation
-                    aggregator.send_nodes(node_to_destroy, "t 6\n")
+                    node_set = set(nodes)
+                    nodes_to_destroy = random.sample(node_set.difference(set(FIXED_ANCHORS)), amount_to_destroy)
+                    print(f"nodes to destroy: {nodes_to_destroy}")
+
+                    timeslot_history[-1]["destroy"] = nodes_to_destroy # we add an destroy entry to the dictionary, so we can later add markings during evaluation
+                    destroy_timestamps.append(most_recent_measurement_timestamp)
+                    aggregator.send_nodes(nodes_to_destroy, "t 4\n")
+                    amount_to_destroy += 1
 
                 # print(associated)
                 print(ranging_timeslot_mapping)
@@ -144,6 +172,14 @@ def main():
         with open("twr_measurements.pkl", "wb") as f:
             # save as pickle
             pickle.dump(twr_measurements, f)
+
+        with open("tsch_timesyncs.pkl", "wb") as f:
+            # save as pickle
+            pickle.dump(tsch_timesyncs, f)
+
+        with open("destroy_timestamps.pkl", "wb") as f:
+            # save as pickle
+            pickle.dump(destroy_timestamps, f)
                 
 
 if __name__ == "__main__":

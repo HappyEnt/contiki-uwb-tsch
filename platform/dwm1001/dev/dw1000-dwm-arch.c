@@ -61,6 +61,7 @@ void dw1000_arch_init()
 
   // read antenna delay from otp memory. These devices come factory pre-calibrated.  antenna delays
   // in OTP memory are vendor specific and are therefore not set as part of the driver interface
+#if DWM1001_LOAD_OTP_ANTENNA_DELAY
   uint16_t antenna_delay_prf_anchor = (uint16_t) ((dw_read_otp_32(0x01C) & 0xFFFF0000)  >> 8);
   uint16_t antenna_delay_prf_tag = (uint16_t) (dw_read_otp_32(0x01C) & 0x0000FFFF);
 
@@ -70,7 +71,8 @@ void dw1000_arch_init()
   // set tag delay as for both prf64 and prf16
   NETSTACK_RADIO.set_object(RADIO_LOC_ANTENNA_DELAY_PRF_64, &antenna_delay_prf_tag, sizeof(uint16_t));
   NETSTACK_RADIO.set_object(RADIO_LOC_ANTENNA_DELAY_PRF_16, &antenna_delay_prf_tag, sizeof(uint16_t));
-
+#endif
+  
   /* Performe a wake up in case of the node was in deepsleept before being restarted */
   NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_REQUEST_WAKEUP);
   dw1000_us_delay(4000);

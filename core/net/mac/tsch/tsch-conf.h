@@ -189,6 +189,9 @@
   #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 7500
     /* UWB_T_SHR = (Preamble lenght + 16) at 850 mbps */
     #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    7500
+  #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 10000
+    /* UWB_T_SHR = (Preamble lenght + 16) at 850 mbps */
+    #define TSCH_DEFAULT_TS_TIMESLOT_LENGTH    10000    
   #elif TSCH_CONF_DEFAULT_TIMESLOT_LENGTH == 25000
     // #error "we come here"
     /* UWB_T_SHR = (Preamble lenght + 64) at 110 mbps */

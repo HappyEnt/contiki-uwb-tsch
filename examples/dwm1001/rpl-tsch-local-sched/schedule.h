@@ -14,13 +14,13 @@
 #include "net/mac/tsch/tsch.h"
 #include "net/mac/tsch/tsch-schedule.h"
 
-/* struct my_link { */
-/*     const linkaddr_t *addr; */
-/*     uint16_t timeslot_offset; */
-/*     uint16_t channel_offset; */
-/*     uint8_t link_options; */
-/*     enum link_type link_type; */
-/* }; */
+struct my_link {
+    const linkaddr_t *addr;
+    uint16_t timeslot_offset;
+    uint16_t channel_offset;
+    uint8_t link_options;
+    enum link_type link_type;
+};
 
 /*
    * for now every node will have in memory the my_slotframe of all nodes in
@@ -29,12 +29,12 @@
    * we should add some preprocessor directives and filter for the NODE_ID
    * to save memory.
 */
-/* struct my_slotframe { */
-/*        const linkaddr_t *hostAddress; */
-/*        struct my_link *links; */
-/*        const size_t linkAmount; */
-/*        const size_t length; */
-/* }; */
+struct my_slotframe {
+       const linkaddr_t *hostAddress;
+       struct my_link *links;
+       const size_t linkAmount;
+       const size_t length;
+};
 
 
 extern const linkaddr_t node_0_ll;
@@ -42,8 +42,8 @@ extern const linkaddr_t node_1_ll;
 extern const linkaddr_t node_2_ll;
 extern const linkaddr_t node_3_ll;
 
-/* extern const struct my_slotframe slotframes[]; */
+extern const struct my_slotframe slotframes[];
 
-/* void init_custom_schedule(); */
+void init_custom_schedule();
 
 #endif /* __SCHEDULE_H__ */
