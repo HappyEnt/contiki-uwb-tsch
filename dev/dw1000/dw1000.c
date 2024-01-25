@@ -659,8 +659,15 @@ dw_conf(dw1000_base_conf_t *dw_conf)
 
   /* We adjust the crystal frequency.
     We use the mid range value (0x0F) */
-  dw_fs_xtalt(0xFU);
+  /* dw_fs_xtalt(0xFU); */
+  int32_t otp_xtaltrim_and_rev = dw_read_otp_32(0x1E) & 0xffff;
+  /* dw_fs_xtalt(0xFU);   */
+  printf("otp_xtaltrim_and_rev: %u\n", (uint8_t) otp_xtaltrim_and_rev);
+  dw_fs_xtalt((uint8_t) otp_xtaltrim_and_rev);
 
+  uint16_t otp_antenna_delay = (uint16_t) (dw_read_otp_32(0x01C) & 0x0000FFFF);
+  dw_set_antenna_delay(otp_antenna_delay);
+  
   /* Commit configuration to device */
   dw_write_subreg(DW_REG_AGC_CTRL, DW_SUBREG_AGC_TUNE2, DW_SUBLEN_AGC_TUNE2,
                   (uint8_t *) &agc_tune2_val);
@@ -2232,6 +2239,8 @@ dw_get_rx_error()
   } else { dw1000.state = DW_STATE_IDLE;
   }
 }
+
+
 /**
  * \brief Sets the DW1000 rx timeout interval. If no preamble has been
  *      discovered in this time the event flag RXRFTO is set.

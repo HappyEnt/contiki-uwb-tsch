@@ -121,7 +121,7 @@
 
 
   // #define TSCH_CONF_ADAPTIVE_TIMESYNC 0
-  #if DW1000_CONF_DATA_RATE == DWT_BR_6M8
+  #if DW1000_DATA_RATE == DW_DATA_RATE_6800_KBPS
     /* Calculate packet tx/rx duration in RTIMER ticks based on sent
      * packet length in bytes with 802.15.4 UWB 110, 850 or 6810 kbps data rate.
      * One byte = 32us at 250 kbps.
@@ -146,7 +146,7 @@
     #define TSCH_DEFAULT_TS_MAX_TX             177  /* do not include SHR */
     /* min slot frame duration (premable 128) 4225 (loc) or 2563 (data) */
 
-  #elif DW1000_CONF_DATA_RATE == DWT_BR_850K
+  #elif DW1000_DATA_RATE == DW_DATA_RATE_850_KBPS
     #undef TSCH_PACKET_DURATION
     #define REEDSOLOMON_OVERRED       130
     #define TSCH_PACKET_DURATION(len) (US_TO_RTIMERTICKS(REEDSOLOMON_OVERRED + 22 + (94 * (len + 2))/10))
@@ -158,7 +158,7 @@
 
     /* min slot frame duration (premable 512) 6845 (loc) or 4570 (data) */
 
-  #elif DW1000_CONF_DATA_RATE == DWT_BR_110K
+  #elif DW1000_DATA_RATE == DW_DATA_RATE_110_KBPS
     #undef TSCH_PACKET_DURATION
     #define REEDSOLOMON_OVERRED       130
     #define TSCH_PACKET_DURATION(len) (US_TO_RTIMERTICKS(REEDSOLOMON_OVERRED + 172 + (72 * (len + 2))))
@@ -224,7 +224,8 @@
   #define TSCH_CONF_LOCALISATION              1
   #define TSCH_CONF_MTM_LOCALISATION          1
 
-  #define TSCH_LOC_RX_GUARD           519
+  /* #define TSCH_LOC_RX_GUARD           519 */
+  #define TSCH_LOC_RX_GUARD           519  
   #define TSCH_LOC_REPLY_DELAY        450
 
   #define TSCH_LOC_RX_REPLY_TIME      (TSCH_LOC_REPLY_DELAY-TSCH_ACK_GUARD)
@@ -235,7 +236,7 @@
   #define TSCH_LOC_TX_OFFSET          (TSCH_LOC_RX_OFFSET+TSCH_LOC_RX_GUARD+UWB_T_SHR)
 
   /* CHORUS configuration */
-  #define TSCH_CONF_CHORUS              1
+  #define TSCH_CONF_CHORUS              0
 
 #else
 /* The default timeslot timing in the standard is a guard time of

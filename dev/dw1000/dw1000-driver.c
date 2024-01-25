@@ -62,6 +62,8 @@
 
 #include <stdio.h>
 
+#include "decadriver/deca_device_api.h"
+#include "decadriver/deca_regs.h"
 
 
 #ifndef DW1000_CONF_CHECKSUM
@@ -69,7 +71,7 @@
 #endif /* DW1000_CONF_CHECKSUM */
 
 #ifndef DW1000_CONF_AUTOACK
-#define DW1000_CONF_AUTOACK     1
+#define DW1000_CONF_AUTOACK     0
 #endif /* DW1000_CONF_AUTOACK */
 
 #define FOOTER_LEN                2
@@ -365,14 +367,17 @@ dw1000_driver_init(void)
   /* Check if SPI communication works by reading device ID */
   assert(0xDECA0130 == dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID));
 
-  /* Simple reset of device. */
-  dw_soft_reset(); /* Need to be call with a SPI speed < 3MHz */
 
+  /* Simple reset of device. */
+  /* dw_soft_reset(); /\* Need to be call with a SPI speed < 3MHz *\/ */
+
+  dwt_initialise(  DWT_LOADUCODE);  
+  
   /* clear all interrupt */
-  dw_clear_pending_interrupt(0x07FFFFFFFFULL);
+  /* dw_clear_pending_interrupt(0x07FFFFFFFFULL); */
 
   /* load the program to compute the timestamps */
-  dw_load_lde_code(); /* Need to be call with a SPI speed < 3MHz */
+  /* dw_load_lde_code(); /\* Need to be call with a SPI speed < 3MHz *\/ */
 
   dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_IDLE_STATE);
 
@@ -387,7 +392,7 @@ dw1000_driver_init(void)
 
 #if DW1000_TSCH
   /* we configure the bitrate and the preamble length */
-  dw1000_driver_config(DW_CHANNEL_1, DW1000_DATA_RATE, DW1000_PREAMBLE,
+  dw1000_driver_config(DW_CHANNEL_5, DW1000_DATA_RATE, DW1000_PREAMBLE,
                         DW1000_PRF);
   /* we change the channel according the default configuration */
   dw1000_driver_set_value(RADIO_PARAM_CHANNEL, (radio_value_t) DW1000_CHANNEL);
@@ -616,7 +621,7 @@ dw1000_driver_transmit(unsigned short payload_len)
 
     // dw_idle(); /* error: abort the transmission */
     // dw1000_driver_init();
-    PRINTF("dw1000_driver_transmit error  tx\n");
+    /* printf("dw1000_driver_transmit error  tx\n"); */
     // tx_return = RADIO_TX_OK;
   }
 
@@ -1171,7 +1176,7 @@ dw1000_driver_set_value(radio_param_t param, radio_value_t value)
     SLEEP_SET();
     if(value == RADIO_SLEEP) {
 
-            dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID);
+        dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID);
         assert(0xDECA0130 == dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID));
         // dw_conf_print();
       dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_INIT_STATE);
@@ -1182,12 +1187,10 @@ dw1000_driver_set_value(radio_param_t param, radio_value_t value)
       dw1000_arch_wake_up(DW1000_PIN_ENABLE);
       dw1000_us_delay(550);
       dw1000_arch_wake_up(DW1000_PIN_DISABLE);
-      // printf("radio wake-up\n");
     }
     else if(value == RADIO_IDLE) {
       dw1000_arch_restore_idle_state();
-      // printf("radio-idle\n");
-              // dw_conf_print();
+      // dw_conf_print();
       /* Check if SPI communication works by reading device ID */
       // assert(0xDECA0130 == dw_read_reg_32(DW_REG_DEV_ID, DW_LEN_DEV_ID));
 
@@ -1460,6 +1463,7 @@ void dw1000_rx_timeout(uint16_t timeout){
   }
   else
   {
+
     dw_set_rx_timeout(timeout);
     dw_enable_rx_timeout();
   }
@@ -1989,8 +1993,9 @@ dw1000_schedule_tx_mtm(uint16_t delay_us)
   uint64_t schedule_time = dw_get_device_time();
   /* require \ref note in the section 3.3 Delayed Transmission of the manual. */
 
-  schedule_time = (schedule_time + US_TO_RADIO(delay_us)) % DW_TIMESTAMP_MAX_VALUE;
-  schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /* clear the low order nine bits */  
+  /* schedule_time = (schedule_time + US_TO_RADIO(delay_us)) % DW_TIMESTAMP_MAX_VALUE; */
+  /* schedule_time &= DW_TIMESTAMP_CLEAR_LOW_9; /\* clear the low order nine bits *\/     */
+  schedule_time = (schedule_time + US_TO_RADIO(delay_us)) & DW_TIMESTAMP_CLEAR_LOW_9;
 
   dw_set_dx_timestamp(schedule_time);
 

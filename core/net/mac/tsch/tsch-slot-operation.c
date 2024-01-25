@@ -239,7 +239,7 @@
 #if RTIMER_SECOND < (32 * 1024)
 #error "TSCH: RTIMER_SECOND < (32 * 1024)"
 #endif
-#if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64 || CONTIKI_TARGET_DWM1001
+#if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64
 /* Use 0 usec guard time for Cooja Mote with a 1 MHz Rtimer*/
 #define RTIMER_GUARD 0u
 #elif RTIMER_SECOND >= 200000
@@ -1724,7 +1724,7 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
     if(mac_tx_status != MAC_TX_OK){
       _PRINTF("TX localisation error at step %u ASN %u %u channel %u\n", step, tsch_current_asn.ms1b, tsch_current_asn.ls4b, current_channel);
     }
-    
+
     tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
 
     uint16_t rx_timeout_us;
@@ -2089,22 +2089,28 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
   static uint8_t packet_buf[TSCH_PACKET_MAX_LEN];
   static uint8_t packet_len;
   static uint8_t seqno;
-  
-  #if MTM_SLOT_DURATIONS_EVAL        
+
+  #if MTM_SLOT_DURATIONS_EVAL
   static rtimer_clock_t slot_start_time, prepare_end_time, tx_start_time, tx_end_time, prop_handling_end_time;
   #endif
-  
+
   static uint16_t mtm_delay_us;
 
   /* timestamp of transmitted messages */
   static uint64_t timestamp_tx;
   static uint16_t tx_antenna_delay;
-  
-#if MTM_SLOT_DURATIONS_EVAL        
+
+#if MTM_SLOT_DURATIONS_EVAL
   slot_start_time = RTIMER_NOW();
 #endif
-  
-  mtm_delay_us = tsch_timing[tsch_ts_loc_tx_offset];
+
+  mtm_delay_us = RTIMERTICKS_TO_US(tsch_timing[tsch_ts_loc_tx_offset]);
+
+#if TSCH_MTM_ADD_TX_JITTER
+    mtm_delay_us += random_rand() % TSCH_MTM_ADD_TX_JITTER;
+#endif
+
+  /* printf("%u", RTIMERTICKS_TO_US(mtm_delay_us)); */
 
   /* Schedule a delayed transmission */
   NETSTACK_RADIO.set_object(RADIO_LOC_TX_DELAYED_US_MTM, &mtm_delay_us, sizeof(uint16_t));
@@ -2112,9 +2118,8 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
   // calculate corrected timestamp
   NETSTACK_RADIO.get_object(RADIO_LOC_TX_ANTENNA_DELAY, &tx_antenna_delay, sizeof(uint16_t));
 
-  /* timestamp_tx = dw_get_dx_timestamp(); */
   timestamp_tx = dw_get_dx_timestamp() + tx_antenna_delay;
-
+  /* timestamp_tx = (((uint64_t)(dw_get_dx_timestamp() & 0xFFFFFFFEUL)) << 8) + tx_antenna_delay; */
   /* create payload */
   packet_len = tsch_packet_create_multiranging_packet(packet_buf,
       TSCH_PACKET_MAX_LEN,
@@ -2127,11 +2132,11 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
   current_neighbor = tsch_queue_add_nbr(&(current_link->addr));
 
   if(NETSTACK_RADIO.prepare(packet_buf, packet_len) == 0) { /* 0 means success */
-      
+
 #if MTM_SLOT_DURATIONS_EVAL
       prepare_end_time = RTIMER_NOW();
 #endif
-      
+
     TSCH_WAIT(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_tx_offset] - RADIO_DELAY_BEFORE_TX, "msg1TX");
 
     TSCH_DEBUG_TX_EVENT();
@@ -2140,7 +2145,7 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
     tx_start_time = RTIMER_NOW();
 #endif
     mac_status = NETSTACK_RADIO.transmit(packet_len);
-#if MTM_SLOT_DURATIONS_EVAL    
+#if MTM_SLOT_DURATIONS_EVAL
     tx_end_time = RTIMER_NOW();
 #endif
     tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
@@ -2158,25 +2163,31 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
 #endif
 
     /* printf("ppl, %u\n", packet_len); */
-    
+
     // last read out tx_timestamp and compare with the timestamp we set in the delayed send
-    /* uint64_t reference_tx = 0x0; */
-    /* NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &reference_tx, sizeof(uint64_t)); */
+    uint64_t reference_tx = 0x0;
+    NETSTACK_RADIO.get_object(RADIO_LOC_LAST_TX_TIMESPTAMP, &reference_tx, sizeof(uint64_t));
 
 #if MTM_SLOT_DURATIONS_EVAL
-    printf("txd, %lu, %lu, %lu, %lu, %lu\n",
-        RTIMERTICKS_TO_US(slot_start_time), RTIMERTICKS_TO_US(prepare_end_time), RTIMERTICKS_TO_US(tx_start_time),
-        RTIMERTICKS_TO_US(tx_end_time), RTIMERTICKS_TO_US(prop_handling_end_time));
+    /* printf("txd, %u, %u, %u, %u\n", */
+    /*     RTIMERTICKS_TO_US(prepare_end_time) - RTIMERTICKS_TO_US(slot_start_time), RTIMERTICKS_TO_US(tx_start_time) - RTIMERTICKS_TO_US(prepare_end_time), RTIMERTICKS_TO_US(tx_end_time) - RTIMERTICKS_TO_US(tx_start_time), */
+    /*     RTIMERTICKS_TO_US(prop_handling_end_time) - RTIMERTICKS_TO_US(tx_end_time)); */
 #endif
-    
-    /* if(reference_tx != timestamp_tx) { */
-      /* printf("MTM: TX timestamp mismatch: \n"); */
-    /* } */
+
+    if(reference_tx != timestamp_tx) {
+      printf("txmm\n");
+    }
   } else {
      add_mtm_transmission_timestamp(&tsch_current_asn, UINT64_MAX);
      _PRINTF("MTM: TX failed: 2\n");
   }
-  
+
+  tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
+
+  uint16_t rx_timeout_us;
+  rx_timeout_us = 0;
+  NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
+
   mtm_slot_end_handler(current_link->timeslot);
 
   TSCH_DEBUG_TX_EVENT();
@@ -2216,7 +2227,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   static int32_t estimated_drift;
 
 #if MTM_SLOT_DURATIONS_EVAL
-  static rtimer_clock_t slot_start_time, prepare_end_time, eval_rx_start_time, rx_end_time, prop_handling_end_time;
+  static rtimer_clock_t slot_start_time, eval_rx_start_time, eval_rx_end_time, prop_handling_end_time;
 #endif
 
   /* timestamp of transmitted messages */
@@ -2233,18 +2244,12 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
   expected_rx_time = current_slot_start + tsch_timing[tsch_ts_loc_rx_offset];
 
-#if MTM_SLOT_DURATIONS_EVAL
-    prepare_end_time = RTIMER_NOW();
-#endif
-
-  TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen");
-
+  /* TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen"); */
+  TSCH_WAIT(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen");
   /* write_byte('r'); */
 
-#if MTM_SLOT_DURATIONS_EVAL
-    eval_rx_start_time = RTIMER_NOW();
-#endif
-    
+
+
   tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
 
   packet_seen = NETSTACK_RADIO.receiving_packet() || NETSTACK_RADIO.pending_packet();
@@ -2255,31 +2260,39 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
           current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT);
   }
 
+#if MTM_SLOT_DURATIONS_EVAL
+  eval_rx_start_time = RTIMER_NOW();
+#endif
+
   if(!packet_seen) {
       /* no packets on air */
       /* write_byte('s'); */
       tsch_radio_off(TSCH_RADIO_CMD_OFF_FORCE);
       _PRINTF("mtm missed\n");
+      mtm_no_frame_detected++;
   } else {
       rx_start_time = RTIMER_NOW() - RADIO_DELAY_BEFORE_DETECT;
-      
+
       BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.pending_packet(),
           current_slot_start, tsch_timing[tsch_ts_rx_offset] + tsch_timing[tsch_ts_rx_wait] + tsch_timing[tsch_ts_max_tx]);
-
-#if MTM_SLOT_DURATIONS_EVAL
-          rx_end_time = RTIMER_NOW();
-#endif
 
       tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
 
       if(NETSTACK_RADIO.pending_packet()) {
           static frame802154_t frame;
-          static int header_len;
+          static int header_len, frame_valid;
           static linkaddr_t source_address;
           static linkaddr_t destination_address;
 
           static struct mtm_packet_timestamp *rx_timestamps;
-          static uint8_t num_rx_timestamps;          
+          static uint8_t num_rx_timestamps;
+
+          timestamp_tx_B = 0;
+          timestamp_rx_A = 0;
+
+#if MTM_SLOT_DURATIONS_EVAL
+          eval_rx_end_time = RTIMER_NOW();
+#endif
 
           // get rx_timestamp
           NETSTACK_RADIO.get_object(RADIO_LOC_LAST_RX_TIMESPTAMP, &timestamp_rx_A, sizeof(uint64_t));
@@ -2287,15 +2300,17 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
           packet_len = NETSTACK_RADIO.read((void *) packet_buf, TSCH_PACKET_MAX_LEN);
           header_len = frame802154_parse((uint8_t *)packet_buf, packet_len, &frame);
 
-          frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
+          frame_valid = header_len > 0 &&
+              frame802154_check_dest_panid(&frame) &&
+              frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
 
 #if TSCH_RESYNC_WITH_SFD_TIMESTAMPS
           /* At the end of the reception, get an more accurate estimate of SFD arrival time */
           NETSTACK_RADIO.get_object(RADIO_PARAM_LAST_PACKET_TIMESTAMP, &rx_start_time, sizeof(rtimer_clock_t));
 #endif
 
-          estimated_drift = RTIMER_CLOCK_DIFF(expected_rx_time, rx_start_time);          
-          struct tsch_neighbor *n = tsch_queue_get_nbr(&source_address);
+          /* estimated_drift = RTIMER_CLOCK_DIFF(expected_rx_time, rx_start_time); */
+          /* struct tsch_neighbor *n = tsch_queue_get_nbr(&source_address); */
           /* if(n != NULL && n->is_time_source) { */
           /*     printf("rs\n"); */
           /*     int32_t since_last_timesync = TSCH_ASN_DIFF(tsch_current_asn, last_sync_asn); */
@@ -2310,41 +2325,56 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
 
 
           // Ranging Related Management
-          
           num_rx_timestamps = 0;
           rx_timestamps = NULL;
 
+#if TSCH_MTM_REJECT_BY_FP_INDEX
+          uint16_t fp_index = dw_get_fp_index();
+          if((int32_t) 750 - ((int32_t) fp_index >> 6) > 40
+              || (int32_t) 750 - ((int32_t) fp_index >> 6) < -40
+              ) {
+              frame_valid = 0;
+          }
+#endif
+
+
           // parse ranging packet
-          if(tsch_packet_parse_multiranging_packet(packet_buf, packet_len, current_link->timeslot, &frame, &timestamp_tx_B, &rx_timestamps, &num_rx_timestamps)) {
+          if(frame_valid && tsch_packet_parse_multiranging_packet(packet_buf, packet_len, current_link->timeslot, &frame, &timestamp_tx_B, &rx_timestamps, &num_rx_timestamps)) {
               uint8_t neighbor = source_address.u8[LINKADDR_SIZE-1];
               uint8_t timeslot_offset = current_link->timeslot;
               add_to_direct_observed_rx_to_queue(timestamp_rx_A, neighbor, timeslot_offset);
               add_mtm_reception_timestamp(neighbor, &tsch_current_asn, timeslot_offset, timestamp_rx_A, timestamp_tx_B, rx_timestamps, num_rx_timestamps);
+              mtm_successfull_frame_receptions++;
           } else {
-              _PRINTF("mtm parse failed\n");
+              /* printf("mtm parse failed\n"); */
+              mtm_failed_frame_receptions++;
           }
 
 #if MTM_SLOT_DURATIONS_EVAL
-              prop_handling_end_time = RTIMER_NOW();
-              /* printf("rxd, %lu, %lu, %lu, %lu, %lu\n", */
-              /*     RTIMERTICKS_TO_US(slot_start_time), RTIMERTICKS_TO_US(prepare_end_time), RTIMERTICKS_TO_US(eval_rx_start_time), */
-              /*     RTIMERTICKS_TO_US(rx_end_time), RTIMERTICKS_TO_US(prop_handling_end_time)); */
-              printf("rxd, %lu, %lu\n",
-                  RTIMERTICKS_TO_US(slot_start_time), RTIMERTICKS_TO_US(prop_handling_end_time));
+          prop_handling_end_time = RTIMER_NOW();
 #endif
-          
+
+#if MTM_SLOT_DURATIONS_EVAL
+          printf("rxd, %u, %u, %u, %u, %u\n",
+              RTIMERTICKS_TO_US(eval_rx_start_time) - RTIMERTICKS_TO_US(slot_start_time),       /// initial wait period
+              RTIMERTICKS_TO_US(eval_rx_end_time) - RTIMERTICKS_TO_US(eval_rx_start_time),      // reception/transmission time
+              RTIMERTICKS_TO_US(prop_handling_end_time) - RTIMERTICKS_TO_US(eval_rx_end_time),
+              num_rx_timestamps,
+              packet_len
+              ); // processing time
+#endif
+
           _PRINTF("--------------Finished----------------\n");
 
       } else {
-          /* add_mtm_reception_timestamp(&current_link->addr, &tsch_current_asn, UINT64_MAX, UINT64_MAX, NULL, 0); */
+          mtm_failed_frame_receptions++;
       }
-
-      tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
-      
-      uint16_t rx_timeout_us;
-      rx_timeout_us = 0;
-      NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
   }
+  tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
+
+  uint16_t rx_timeout_us;
+  rx_timeout_us = 0;
+  NETSTACK_RADIO.set_object(RADIO_RX_TIMEOUT_US, &rx_timeout_us, sizeof(uint16_t));
 
   mtm_slot_end_handler(current_link->timeslot);
 

@@ -44,6 +44,7 @@
 /********** Propagation time Process *********/
 PROCESS_NAME(TSCH_PROP_PROCESS);
 PROCESS_NAME(TSCH_MTM_PROCESS);
+PROCESS_NAME(TSCH_MTM_SLOT_END_PROCESS);
 
 /********** Type *********/
 
@@ -52,11 +53,21 @@ PROCESS_NAME(TSCH_MTM_PROCESS);
 // depends on frame length
 #define TSCH_MTM_PROP_MAX_NEIGHBORS 15
 // defines the maximum amount of measurements we will store
-#define TSCH_MTM_PROP_MAX_MEASUREMENT 15
-
+/* #define TSCH_MTM_PROP_MAX_MEASUREMENT 14 // max capacity for a multi ranging frame */
+#define TSCH_MTM_PROP_MAX_MEASUREMENT 14 // max capacity for a multi ranging frame
+#define TSCH_MTM_PROP_MAX_NEIGHBOR_ENTRIES 40
+#define TSCH_MTM_MAX_TDOA_ENTRIES 120 // enough for a fully-connected cluster of 16 nodes
 
 // define ranging_addr_t as uint8_t for now
 typedef uint8_t ranging_addr_t;
+
+extern uint32_t mtm_successfull_frame_receptions, mtm_sucessfull_rounds, mtm_failed_frame_receptions, mtm_no_frame_detected;
+
+enum MTM_SLOT_END_TYPE {
+    MTM_ROUND_END,
+    MTM_SLOT_END
+};
+
 
 enum measurement_type {
     TDOA,
@@ -89,6 +100,7 @@ struct ds_twr_ts
     uint64_t t_a1, r_b1, t_b1, r_a1, t_a2, r_b2, t_b2, r_a2;
 };
 
+#if WITH_PASSIVE_TDOA
 struct mtm_pas_tdoa
 {
     struct mtm_pas_tdoa *next;
@@ -108,12 +120,13 @@ struct mtm_pas_tdoa
     // round as the tx timestamp that we extract from A's message
     uint64_t most_recent_tx_A, rx_timestamp_L1, most_recent_tx_B, rx_timestamp_L2;
     uint8_t rx_timeslot_L1, rx_timeslot_L2; // stores in which round and timeslot we did receive the message we identify as initiator message at
-    uint64_t rx_round_counter_L1, rx_round_counter_L2;
+    uint32_t rx_round_counter_L1, rx_round_counter_L2;
     uint8_t closed_round;
 
     struct ds_twr_ts ds_ts;
     uint64_t r_l1, r_l2, r_l3, r_l4;
 };
+#endif
 
 enum mtm_neighbor_type  {
     MTM_DIRECT_NEIGHBOR,
@@ -154,13 +167,16 @@ void add_mtm_reception_timestamp(
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
 void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset);
-void mtm_set_round_end(uint8_t timeslot);
+void mtm_set_round_slots(uint8_t timeslot_begin, uint8_t timeslot_end); // begin and end are inclusive 
 void mtm_slot_end_handler(uint16_t timeslot);
 void set_mtm_tx_slot(uint8_t timeslot);
 void mtm_reset_rx_queue();
 void mtm_reset();
+
 list_t tsch_prop_get_neighbor_list();
+#if WITH_PASSIVE_TDOA
 list_t tsch_prop_get_tdoa_list();
+#endif
 
 // requires passing of the asn. Currently not used, but could in future be used when the duration
 // between measurements increases. This would allow us to give a measurement of how outdated or bad

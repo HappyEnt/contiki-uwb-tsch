@@ -93,13 +93,14 @@ void dw1000_us_delay(int us){
  * system set this maximum value.
  **/
 void dw1000_arch_spi_set_clock_freq(uint32_t freq){
-    printf("setting spi clock freq to %d\n", freq);
+    /* printf("setting spi clock freq to %d\n", freq); */
     if(freq == DW_SPI_CLOCK_FREQ_IDLE_STATE) {
         dw1000_spi_set_fast_rate();
     } else {
         dw1000_spi_set_slow_rate();
     }
 }
+
 /**
  * Configure the embedeed system to allow the transceiver to go in
  * DEEPSLEEP state.
@@ -118,8 +119,12 @@ void dw1000_arch_init_deepsleep(void){
  * GPIO8 is drive HIGH when the transceiver comes in the IDLE state
  * It take approx 3ms to go out of the deepsleep state.
  **/
-void dw1000_arch_wake_up(dw1000_pin_state state){
-    dw1000_arch_wakeup_nowait();
+void dw1000_arch_wake_up(dw1000_pin_state state) {
+    if(state == DW1000_PIN_ENABLE) {
+        nrf_gpio_pin_clear(DW1000_SPI_CS_PIN);        
+    } else {
+        nrf_gpio_pin_set(DW1000_SPI_CS_PIN);
+    }
 }
 
 /**
