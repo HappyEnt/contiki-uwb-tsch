@@ -98,14 +98,16 @@
   #define UWB_T_SHR                  ((uint16_t) (128+16))
   /* #define UWB_T_SHR                  ((uint16_t) (256+16)) */
   /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   2500 */
-  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   5000 */
   #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   5000
+  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   10000 */
+  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   25000 */
 
 #elif DW1000_DATA_RATE == DW_DATA_RATE_850_KBPS
   #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_512
   /* UWB_T_SHR = (Preamble lenght + 16) at 850 mbps */
   #define UWB_T_SHR                  ((uint16_t) (512+16))
   #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   7500
+  /* #define TSCH_CONF_DEFAULT_TIMESLOT_LENGTH   10000 */
 
 #else /* DW1000_DATA_RATE == DW_DATA_RATE_110_KBPS */
   #define DW1000_PREAMBLE             DW_PREAMBLE_LENGTH_1024
@@ -143,44 +145,34 @@
   /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){3, 7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16 */
   /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  2 */
 
-  #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
-  #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    1
-  
-  /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){ 3, 4, 7, 10} */
-  /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    4 */
-  
-  /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){1, 7, 6, 5, 0, 4, 2, 3} */
-  // #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){1, 7, 6}
-  
-  /* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){1, 7, 6, 5, 0, 4, 2, 3, 9, 10, 8, 11} */
-  /* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  12 */
+#define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
+/* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16 */
+#define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN    1
 
-  // #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){7}
-  // #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){ 3, 7}
-  
+#define TSCH_CONF_DEFAULT_RANGE_HOPPING_SEQUENCE  (uint8_t[]){7} // this configuration uses only UWB Channel 5 with PRF 64 and PRF 16
+#define TSCH_CONF_HOPPING_RANGE_SEQUENCE_MAX_LEN   1
+
+/* #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  (uint8_t[]){1, 7, 6, 5, 0, 4, 2, 3, 9, 10, 8, 11} */
+/* #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  12 */
+
+
 // NOTE if we use only a single channel here, the tsch join process won't change channels
 // for some reason this does result in beacons not being received anymore, if the receiver
 // did not receive the beacon directly at turn on
 #define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){3, 7}
 
-  // #define TSCH_CONF_JOIN_HOPPING_SEQUENCE     (uint8_t[]){ 3}
-  // #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  6
-
-  #define TSCH_CONF_SLEEP 0
-
-
-  /* Chorus Config : */
-  #ifdef CHORUS_CONFIG
-    #undef TSCH_CONF_DEFAULT_HOPPING_SEQUENCE
-    #undef TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN
-    #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  TSCH_CHORUS_HOPPING_SEQUENCE
-    #define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  TSCH_CHORUS_HOPPING_SEQUENCE_MAX_LEN
-  #endif /* CHORUS_CONFIG */
+/* Chorus Config : */
+#ifdef CHORUS_CONFIG
+#undef TSCH_CONF_DEFAULT_HOPPING_SEQUENCE
+#undef TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN
+#define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE  TSCH_CHORUS_HOPPING_SEQUENCE
+#define TSCH_CONF_HOPPING_SEQUENCE_MAX_LEN  TSCH_CHORUS_HOPPING_SEQUENCE_MAX_LEN
+#endif /* CHORUS_CONFIG */
 
 
 
-  // #undef TSCH_CONF_RADIO_ON_DURING_TIMESLOT
-  // #define TSCH_CONF_RADIO_ON_DURING_TIMESLOT 1
+  /* #undef TSCH_CONF_RADIO_ON_DURING_TIMESLOT */
+  /* #define TSCH_CONF_RADIO_ON_DURING_TIMESLOT 1 */
 
   // #define TSCH_CONF_MAX_INCOMING_PACKETS      8
 

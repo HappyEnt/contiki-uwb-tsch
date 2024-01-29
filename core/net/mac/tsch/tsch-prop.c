@@ -915,6 +915,12 @@ int tsch_packet_create_multiranging_packet(
   memcpy(&buf[curr_len], &checksum, sizeof(uint32_t));
   curr_len = curr_len + sizeof(uint32_t);
 
+
+#if WITH_DEV_FILL_MAC_PACKET
+  return PACKETBUF_SIZE;
+#endif
+
+
   return curr_len;
 }
 

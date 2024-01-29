@@ -18,14 +18,6 @@ PROJECT_SOURCEFILES += toulouse-nodes.c toulouse_linkaddr_mapping.c
 CFLAGS += -DDWM1001_LINKADDR_FROM_FILE=1
 endif
 
-ifeq ($(MAKE_WITH_REDUCED_RANGE),1)
-CFLAGS += -DPROJECT_WITH_REDUCED_RANGE=1
-endif
-
-ifeq ($(MAKE_WITH_UART_OUTPUT_RANGE),1)
-CFLAGS += -DWITH_UART_OUTPUT_RANGE=1 # only output range in this case for now
-endif
-
 # this experiment only works in the lille testbed
 NRF52_RTIMER_USE_HFCLK=1
 PRINTF_OVER_UART=1

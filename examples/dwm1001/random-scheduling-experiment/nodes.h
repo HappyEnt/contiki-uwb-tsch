@@ -10,6 +10,7 @@ struct node_role_entry {
     enum node_role role;
     uint8_t fixed_timeslot;
     uint8_t send_beacons;
+    const linkaddr_t *timesource_neighbor;
 };
 
 extern struct node_role_entry node_role[];

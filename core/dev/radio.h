@@ -239,6 +239,14 @@ enum {
    * The value is a 16 bits unsigned int (uint16_t)  */
   RADIO_LOC_RX_ANTENNA_DELAY,
 
+  /*
+   * Sets the default Rx and Tx antenna delays for correction for PRF 64 and PRF 16 respectively.
+   * Note that the values set here will be applied at each channel change.  That is they will even
+   * be changed if you changed the values manually with the rx/tx specific access object above.
+   */
+  RADIO_LOC_ANTENNA_DELAY_PRF_64,
+  RADIO_LOC_ANTENNA_DELAY_PRF_16,
+
   /* Constants (read only) */
 
   /* The lowest radio channel. */

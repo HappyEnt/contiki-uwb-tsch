@@ -1,4 +1,5 @@
 #include "nodes.h"
+#include "toulouse-nodes.h"
 
 // we only use short addresses
  const linkaddr_t dwm1001_26_ll = { { 89, 26 } };
@@ -45,54 +46,55 @@
  const linkaddr_t dwm1001_86_ll = { { 247, 86 } };
  const linkaddr_t dwm1001_42_ll = { { 212, 42 } };
 
+static struct node_role_entry mobile_entry = { NULL, MOBILE, 0 };
 
 struct node_role_entry node_role[] = {
- { &dwm1001_70_ll , ANCHOR }, 
- { &dwm1001_77_ll , ANCHOR }, 
- { &dwm1001_45_ll , ANCHOR }, 
- { &dwm1001_5_ll , ANCHOR }, 
- { &dwm1001_14_ll , ANCHOR }, 
- { &dwm1001_30_ll , ANCHOR }, 
- { &dwm1001_13_ll , ANCHOR }, 
- { &dwm1001_69_ll , ANCHOR }, 
- { &dwm1001_39_ll , ANCHOR }, 
- { &dwm1001_81_ll , ANCHOR }, 
- { &dwm1001_10_ll , ANCHOR }, 
- { &dwm1001_61_ll , ANCHOR }, 
- { &dwm1001_1_ll , ANCHOR }, 
- { &dwm1001_38_ll , ANCHOR }, 
- { &dwm1001_19_ll , ANCHOR }, 
- { &dwm1001_41_ll , ANCHOR }, 
- { &dwm1001_37_ll , ANCHOR }, 
- { &dwm1001_86_ll , ANCHOR }, 
- { &dwm1001_33_ll , ANCHOR }, 
- { &dwm1001_17_ll , ANCHOR }, 
- { &dwm1001_6_ll , ANCHOR }, 
- { &dwm1001_9_ll , ANCHOR }, 
- { &dwm1001_43_ll , ROOT }, 
- { &dwm1001_94_ll , ANCHOR }, 
- { &dwm1001_65_ll , ANCHOR }, 
- { &dwm1001_93_ll , ANCHOR }, 
- { &dwm1001_85_ll , ANCHOR }, 
- { &dwm1001_73_ll , ANCHOR }, 
- { &dwm1001_82_ll , ANCHOR }, 
- { &dwm1001_42_ll , ANCHOR }, 
- { &dwm1001_63_ll , ANCHOR }, 
- { &dwm1001_89_ll , ANCHOR }, 
- { &dwm1001_29_ll , ANCHOR }, 
- { &dwm1001_2_ll , ANCHOR }, 
- { &dwm1001_21_ll , ANCHOR }, 
- { &dwm1001_95_ll , ANCHOR }, 
- { &dwm1001_62_ll , ANCHOR }, 
- { &dwm1001_26_ll , ANCHOR }, 
- { &dwm1001_74_ll , ANCHOR }, 
- { &dwm1001_35_ll , ANCHOR }, 
- { &dwm1001_34_ll , ANCHOR }, 
- { &dwm1001_25_ll , ANCHOR }, 
- { &dwm1001_18_ll , ANCHOR }
+    { &dwm1001_70_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_77_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_45_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_5_ll , ANCHOR,  4, 1 }, 
+    { &dwm1001_14_ll , ROOT,   2, 1 }, 
+    { &dwm1001_30_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_13_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_69_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_39_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_81_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_10_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_61_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_1_ll , ANCHOR,  0, 0 }, 
+    { &dwm1001_38_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_19_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_41_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_37_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_86_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_33_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_17_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_6_ll , ANCHOR,  0, 0 }, 
+    { &dwm1001_9_ll , ANCHOR,  0, 0 }, 
+    { &dwm1001_43_ll , ANCHOR, 3, 1 }, 
+    { &dwm1001_94_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_65_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_93_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_85_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_73_ll , ANCHOR, 0, 0 },
+    { &dwm1001_82_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_42_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_63_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_89_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_29_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_2_ll , ANCHOR,  0, 0 }, 
+    { &dwm1001_21_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_95_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_62_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_26_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_74_ll , ANCHOR, 0, 1 }, 
+    { &dwm1001_35_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_34_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_25_ll , ANCHOR, 0, 0 }, 
+    { &dwm1001_18_ll , ANCHOR, 0, 0 }
 };
 
-enum node_role get_role_for_node(const linkaddr_t *addr) {
+struct node_role_entry* get_node_role_entry(const linkaddr_t *addr) {
     // print address
     printf("address: ");
     for (int i = 0; i < sizeof(addr->u8) / sizeof(uint8_t); i++) {
@@ -103,9 +105,8 @@ enum node_role get_role_for_node(const linkaddr_t *addr) {
     int i;
     for (i = 0; i < sizeof(node_role) / sizeof(struct node_role_entry); i++) {
         if (linkaddr_cmp(addr, node_role[i].addr)) {
-            return node_role[i].role;
+            return &node_role[i];
         }
     }
-    return MOBILE;
+    return &mobile_entry;
 }
-

@@ -87,6 +87,8 @@ AUTOSTART_PROCESSES(&node_process, &sensors_process);
 
 static uint32_t measurement_count = 0;
 
+static struct ctimer delayed_start_timer;
+
 /*---------------------------------------------------------------------------*/
 
 static void
@@ -182,6 +184,12 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
   PROCESS_END();
 }
 
+void start_experiment() {
+    printf("start experiment\n");
+    rand_sched_start();
+    ctimer_stop(&delayed_start_timer);
+}
+
 
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(node_process, ev, data)
@@ -189,6 +197,8 @@ PROCESS_THREAD(node_process, ev, data)
   static struct etimer et;
   static struct etimer network_status_timer;
   static struct node_role_entry *role;
+  static uint8_t set_after_assoc = 0;
+  
   PROCESS_BEGIN();
   
   leds_on(LEDS_ORANGE);
@@ -237,10 +247,18 @@ PROCESS_THREAD(node_process, ev, data)
   }
   }
 
+#if !TSCH_AUTOSELECT_TIME_SOURCE
+  if (role->timesource_neighbor != NULL) {
+      tsch_queue_update_time_source(role->timesource_neighbor);
+      tsch_set_eb_period(TSCH_EB_PERIOD);
+  }
+#endif
+  
+
   etimer_set(&network_status_timer, CLOCK_SECOND);
 
   /* Print out routing tables every minute */
-  etimer_set(&et, CLOCK_SECOND/4);
+  etimer_set(&et, CLOCK_SECOND*2);
   while(1) {
 
       PROCESS_WAIT_EVENT_UNTIL(
@@ -250,12 +268,13 @@ PROCESS_THREAD(node_process, ev, data)
       );
 
       if(etimer_expired(&network_status_timer)) {
-          uart_write_link_addr();
-          etimer_reset(&network_status_timer);
+          /* uart_write_link_addr(); */
 
           #if WITH_UART_OUTPUT_COUNTS
           printf("m, %u\n", measurement_count);
           #endif
+          
+          etimer_reset(&network_status_timer);          
       }
 
       if(ev == serial_line_event_message) {
@@ -272,6 +291,7 @@ PROCESS_THREAD(node_process, ev, data)
               }
               rand_sched_set_timeslot((uint8_t) timeslot);
           } else if (serial_data[0] == 's') {
+              role = get_node_role_entry(&linkaddr_node_addr);              
               switch(role->role) {
               case MOBILE: {
                   rand_sched_stop();
@@ -294,9 +314,8 @@ PROCESS_THREAD(node_process, ev, data)
                   break;
               }
               }
-              
-              /* etimer_set(&et, CLOCK_SECOND * 4); */
-              /* PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et)); */
+
+              measurement_count = 0;
 
               switch(role->role) {
               case MOBILE: {
@@ -317,17 +336,23 @@ PROCESS_THREAD(node_process, ev, data)
                   break;
               }
               }
-
-              rand_sched_start();
+              
+              printf("ts, 0\n");
+              
+              ctimer_set(&delayed_start_timer, CLOCK_SECOND, start_experiment, NULL);
           }
       }
 
       // if tsch_is_associated add for each neighbor a ranging slot
-      /* if(tsch_is_associated) { */
-      /*     printf("tschass 1\n"); */
-      /* } else { */
-      /*     printf("tschass 0\n"); */
-      /* } */
+      if(tsch_is_associated) {
+          // set again
+#if !TSCH_AUTOSELECT_TIME_SOURCE          
+          if (role->timesource_neighbor != NULL && !set_after_assoc) {
+              set_after_assoc = 1;
+              tsch_queue_update_time_source(role->timesource_neighbor);
+          }
+#endif
+      }
 
       if(etimer_expired(&et)) {
           etimer_reset(&et);

@@ -52,7 +52,22 @@
 /************* Experiment Configuration **************/
 /*******************************************************/
 #define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
-#define DWM1001_LOAD_OTP_ANTENNA_DELAY 1
+#define DWM1001_LOAD_OTP_ANTENNA_DELAY 0
+#define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 0
+#define RAND_SCHED_RULES_MIN_NEIGHBORS 3
+#define MTM_CALCULATE_PROCESSING_DELAY 0
+#define EXPERIMENT_MTM_ROUND_LENGTH 12
+#define PROJECT_WITH_REDUCED_RANGE 0
+#define WITH_UART_OUTPUT_RANGE 0
+#define WITH_UART_OUTPUT_COUNTS 1
+#define MTM_SLOT_DURATIONS_EVAL 0
+#define WITH_PASSIVE_TDOA 0
+#define WITH_MTM_BUS_BOARDING 0
+
+#define TSCH_MTM_REJECT_BY_FP_INDEX 0
+#define WITH_MTM_TDOA_REPLACE_AFTER_TIMEOUT 1
+/* #define WITH_MTM_SLOT_END_PROCESS 0 */
+#define WITH_MTM_SLOT_END_PROCESS 0
 
 /*******************************************************/
 /********* Enable RPL non-storing mode *****************/
@@ -182,8 +197,8 @@
 #if !(WITH_ORCHESTRA)
 #define TSCH_SCHEDULE_CONF_WITH_6TISCH_MINIMAL 0 /* We do our own scheduling */
 #define TSCH_CONF_WITH_LINK_SELECTOR 0 /* We don't require the link selector feature */
-#define NETSTACK_CONF_ROUTING_NEIGHBOR_ADDED_CALLBACK schedule_callback_routing_child_added
-#define NETSTACK_CONF_ROUTING_NEIGHBOR_REMOVED_CALLBACK schedule_callback_routing_child_removed
+/* #define NETSTACK_CONF_ROUTING_NEIGHBOR_ADDED_CALLBACK schedule_callback_routing_child_added */
+/* #define NETSTACK_CONF_ROUTING_NEIGHBOR_REMOVED_CALLBACK schedule_callback_routing_child_removed */
 #endif
 
 // we need really short timeslot lengths

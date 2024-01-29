@@ -56,10 +56,12 @@
 #define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 0
 #define RAND_SCHED_RULES_MIN_NEIGHBORS 1
 #define MTM_CALCULATE_PROCESSING_DELAY 0
-#define EXPERIMENT_MTM_ROUND_LENGTH 10
+#define EXPERIMENT_MTM_ROUND_LENGTH 14
 #define PROJECT_WITH_REDUCED_RANGE 0
 #define WITH_UART_OUTPUT_RANGE 0
 #define WITH_UART_OUTPUT_COUNTS 1
+#define WITH_PASSIVE_TDOA 1
+#define WITH_MTM_BUS_BOARDING 0
 
 /*******************************************************/
 /********* Enable RPL non-storing mode *****************/

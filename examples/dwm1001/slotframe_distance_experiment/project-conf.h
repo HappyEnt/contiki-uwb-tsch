@@ -67,9 +67,26 @@
 /************* Experiment Configuration **************/
 /*******************************************************/
 #define MTM_EVAL_OUTPUT_TS 0 // Whether to output raw timestamps. Note that this might require an increase of the tsch timeslot length.
-#define DWM1001_LOAD_OTP_ANTENNA_DELAY 1
+#define DWM1001_LOAD_OTP_ANTENNA_DELAY 0
 #define RAND_SCHED_RULES_WITH_PLANARITY_CHECK 1
+#define RAND_SCHED_RULES_MIN_NEIGHBORS 1
 #define MTM_CALCULATE_PROCESSING_DELAY 0
+#define EXPERIMENT_MTM_ROUND_LENGTH 14
+#define PROJECT_WITH_REDUCED_RANGE 0
+#define WITH_UART_OUTPUT_RANGE 1
+#define WITH_UART_OUTPUT_COUNTS 0
+#define MTM_SLOT_DURATIONS_EVAL 0
+#define WITH_PASSIVE_TDOA 1
+#define WITH_MTM_BUS_BOARDING 0
+
+#define WITH_SYMMETRIC_DELAYS 1
+#define WITH_SHORT_REPLY_LONG_DELAY 0
+#define WITH_EVAL_PROP_SLOT 1
+#define WITH_INTERLEAVE_DSTWR 0
+
+#define TSCH_MTM_REJECT_BY_FP_INDEX 0
+#define WITH_MTM_TDOA_REPLACE_AFTER_TIMEOUT 1
+#define WITH_MTM_SLOT_END_PROCESS 0
 
 
 /*******************************************************/
@@ -99,7 +116,7 @@
 // Note that the former should probably not be done in heavy multihop networks
 #define TSCH_CONF_AUTOSELECT_TIME_SOURCE 1
 #endif
-#define TSCH_SCHEDULE_CONF_MAX_LINKS 32
+#define TSCH_SCHEDULE_CONF_MAX_LINKS 100
 
 /* Needed for CC2538 platforms only */
 /* For TSCH we have to use the more accurate crystal oscillator
@@ -184,7 +201,7 @@
 // Since we don't do timesync on ranging packets yet,
 // and we also wan't to have as short timeslots as possible
 // we shorten the beacon periods as fast as possible
-#define TSCH_CONF_EB_PERIOD (CLOCK_SECOND/4) // default 16
+#define TSCH_CONF_EB_PERIOD (CLOCK_SECOND/8) // default 16
 #define TSCH_CONF_MAX_EB_PERIOD (CLOCK_SECOND/2) //default 50
 #define TSCH_CONF_HW_FRAME_FILTERING    0
 // if not ORCHESTRA

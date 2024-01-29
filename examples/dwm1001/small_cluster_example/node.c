@@ -87,6 +87,8 @@ AUTOSTART_PROCESSES(&node_process, &sensors_process);
 
 static uint32_t measurement_count = 0;
 
+static struct ctimer delayed_start_timer;
+
 /*---------------------------------------------------------------------------*/
 
 static void
@@ -149,6 +151,13 @@ void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr
     }
 }
 
+void start_experiment() {
+    printf("start experiment\n");
+    rand_sched_start();
+    ctimer_stop(&delayed_start_timer);
+}
+
+
 PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
 {
   PROCESS_BEGIN();
@@ -160,12 +169,19 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
   while(1) {
     PROCESS_YIELD();
     /* receive a new propagation time measurement */
+
     if(ev == PROCESS_EVENT_MSG) {
         m = (struct distance_measurement *) data;
         measurement_count++;
 #if WITH_UART_OUTPUT_RANGE
         float dist = time_to_dist(m->time);
         struct tsch_asn_t asn = m->asn;
+
+#if WITH_UART_OUTPUT_SKIP > 0
+        if(measurement_count % WITH_UART_OUTPUT_SKIP != 0) {
+            continue;
+        }
+#endif
         if(m->type == TWR) {
             ranging_addr_t addr_short = m->addr_B;
             output_range_via_serial_snprintf(addr_short, dist, asn);
@@ -238,6 +254,7 @@ PROCESS_THREAD(node_process, ev, data)
   etimer_set(&network_status_timer, CLOCK_SECOND);
 
   // nodes: 29 + 39 + 38 + 45 + 35 + 34 + 33 + 30 + 26 + 43 + 41
+  // biggest clique: 29 +  39 +  30 +  38 +  25 +  26 +  34 +  35 +  43 +  41 +  14 +  13 +  33 +  45 +  1 +  17 +  2 +  5 +  21 +  19 +  6 +  10 +  9 +  18
   // NOte 42, 37 do not receive serial input
 
   /* Print out routing tables every minute */
@@ -273,6 +290,7 @@ PROCESS_THREAD(node_process, ev, data)
               }
               rand_sched_set_timeslot((uint8_t) timeslot);
           } else if (serial_data[0] == 's') {
+              role = get_node_role_entry(&linkaddr_node_addr);              
               switch(role->role) {
               case MOBILE: {
                   rand_sched_stop();
@@ -295,9 +313,6 @@ PROCESS_THREAD(node_process, ev, data)
                   break;
               }
               }
-              
-              etimer_set(&et, CLOCK_SECOND * 4);
-              PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
               switch(role->role) {
               case MOBILE: {
@@ -318,8 +333,10 @@ PROCESS_THREAD(node_process, ev, data)
                   break;
               }
               }
-
-              rand_sched_start();
+              
+              printf("ts, 0\n");
+              
+              ctimer_set(&delayed_start_timer, CLOCK_SECOND * 4, start_experiment, NULL);
           }
       }
 

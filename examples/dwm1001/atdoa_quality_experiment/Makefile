@@ -4,7 +4,7 @@ all: $(CONTIKI_PROJECT)
 CONTIKI=../../..
 CFLAGS += -DPROJECT_CONF_H=\"project-conf.h\"
 
-# CONTIKI_WITH_IPV6 = 1
+CONTIKI_WITH_IPV6 = 1
 CONTIKI_WITH_RIME = 1
 MAKE_WITH_ORCHESTRA ?= 0 # force Orchestra from command line
 MAKE_WITH_SECURITY ?= 0 # force Security from command line

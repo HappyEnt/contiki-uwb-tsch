@@ -17,7 +17,7 @@ CONTIKIDIRS := $(addprefix $(BOARD_ROOT_PATH)/, $(BOARD_DIRS)) $(CONTIKIDIRS)
 
 CONTIKI_TARGET_DIRS += . dev config
 CONTIKI_SOURCEFILES += contiki-main.c temperature-sensor.c platform-addr.c
-CONTIKI_SOURCEFILES += battery_read.c
+CONTIKI_SOURCEFILES += battery_read.c dwm-debug-gpio.c
 
 # Add DW1000 architecture-dependent drivers
 CONTIKI_SOURCEFILES += d3s_dw1000-arch.c dw1000-dwm-arch.c

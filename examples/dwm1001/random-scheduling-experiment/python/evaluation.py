@@ -390,6 +390,64 @@ def plot_timeslot_hist(node_ids, timeslot_hist):
     
     plt.show()
 
+def plot_timeslot_hist(node_ids, timeslot_hist):
+    timeslot_matrix = []
+    associated = []
+    association_markings = []
+    destroy_markings = []
+    
+    current_column = 0
+    for timeslot_mapping in timeslot_hist:
+        current_timeslots = []
+        current_row = 0
+        for node_id in node_ids:
+            if node_id in timeslot_mapping:
+                if node_id not in associated:
+                    associated.append(node_id)
+                    association_markings.append((current_row, current_column))
+                    current_timeslots.append(timeslot_mapping[node_id])
+                else:
+                    if "destroy" in timeslot_mapping:
+                        if node_id in timeslot_mapping["destroy"]:
+                            # current_timeslots.append(21)
+                            destroy_markings.append((current_row, current_column))
+
+                    current_timeslots.append(timeslot_mapping[node_id])
+
+            else:
+                current_timeslots.append(0)
+
+            current_row += 1
+        current_column += 1
+            
+        timeslot_matrix.append(current_timeslots)
+
+    # create matplotlib heatmap and stretch automatic so one entry is not just one pixel wide
+    fig, ax = plt.subplots()
+    
+    # map 0 to white and 20 to red
+    cmap = cm.get_cmap('tab20_r', 20)
+    cmap.set_under(color="white")
+    
+    # im = ax.imshow(timeslot_matrix, cmap=cmap, interpolation="nearest", aspect="auto")
+    # transpose before show
+    im = ax.imshow(np.transpose(timeslot_matrix), cmap=cmap, interpolation="nearest", aspect="auto", vmin=1)
+    # set ytickslabel to node ids
+    ax.set_yticks(np.arange(len(node_ids)))
+    ax.set_yticklabels(node_ids)
+
+
+    # add at the (row, column) pairs in association_markings small red bars
+    for marking in association_markings:
+        # make them quite thick
+        ax.plot(marking[1], marking[0], color="red", marker=">", markersize=10, linewidth=10)
+
+    for marking in destroy_markings:
+        # make them quite thick
+        ax.plot(marking[1], marking[0], color="black", marker="d", markersize=10, linewidth=10)
+    
+    plt.show()
+    
     
     
 

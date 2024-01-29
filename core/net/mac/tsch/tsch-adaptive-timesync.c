@@ -40,9 +40,17 @@
 
 #include "net/mac/tsch/tsch.h"
 #include "net/mac/tsch/tsch-conf.h"
+#include "net/mac/tsch/tsch-queue.h"
 #include "net/mac/tsch/tsch-adaptive-timesync.h"
 #include "net/mac/tsch/tsch-log.h"
 #include <stdio.h>
+
+#define UART_WRITE 1
+#ifdef UART_WRITE
+  #include "dev/uart0.h"
+  #define write_byte(b) uart0_writeb(b);
+#endif /* UART_WRITE */
+
 
 #if TSCH_ADAPTIVE_TIMESYNC
 
@@ -113,6 +121,7 @@ tsch_timesync_update(struct tsch_neighbor *n, uint16_t time_delta_asn, int32_t d
    * means proportionally larger measurement error. */
   if(last_timesource_neighbor != n) {
     last_timesource_neighbor = n;
+    /* printf("tsu, %u\n", last_timesource_neighbor->addr.u8[LINKADDR_SIZE-1]);     */
     drift_ppm = 0;
     timesync_entry_count = 0;
     compensated_ticks = 0;

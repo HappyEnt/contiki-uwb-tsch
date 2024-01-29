@@ -65,6 +65,13 @@
 #include "decadriver/deca_device_api.h"
 #include "decadriver/deca_regs.h"
 
+#if WITH_DWM_DEBUG_GPIO
+#include "debug-gpio.h"
+#define TOGGLE_DEBUG_GPIO() debug_toggle_pin();
+#else
+#define TOGGLE_DEBUG_GPIO()
+#endif
+
 
 #ifndef DW1000_CONF_CHECKSUM
 #define DW1000_CONF_CHECKSUM    1
@@ -209,7 +216,7 @@
 #ifndef DW1000_SFD_READOUT_OFFSET
   #define DW1000_SFD_READOUT_OFFSET 18
 #endif
-  
+
 /* #define DOUBLE_BUFFERING 1 */
 
 /* Used to fix an error with an possible interruption before
@@ -371,8 +378,8 @@ dw1000_driver_init(void)
   /* Simple reset of device. */
   /* dw_soft_reset(); /\* Need to be call with a SPI speed < 3MHz *\/ */
 
-  dwt_initialise(  DWT_LOADUCODE);  
-  
+  dwt_initialise(  DWT_LOADUCODE);
+
   /* clear all interrupt */
   /* dw_clear_pending_interrupt(0x07FFFFFFFFULL); */
 
@@ -766,7 +773,9 @@ dw1000_driver_read(void *buf, unsigned short bufsize)
   }
 
   /* Store rx data in buf */
+  TOGGLE_DEBUG_GPIO();
   dw_read_reg(DW_REG_RX_BUFFER, len, (uint8_t *)buf);
+  TOGGLE_DEBUG_GPIO();
 
   RIMESTATS_ADD(llrx);
 

@@ -68,6 +68,14 @@
 #include "decadriver/deca_device_api.h"
 #include <stdint.h>
 
+
+#if WITH_DWM_DEBUG_GPIO
+#include "debug-gpio.h"
+#define TOGGLE_DEBUG_GPIO() debug_toggle_pin();
+#else
+#define TOGGLE_DEBUG_GPIO()
+#endif
+
 #if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64
 #include "lib/simEnvChange.h"
 #include "sys/cooja_mt.h"

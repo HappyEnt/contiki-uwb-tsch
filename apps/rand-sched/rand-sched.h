@@ -42,8 +42,18 @@
 #include "net/mac/tsch/tsch-conf.h"
 #include "net/mac/tsch/tsch-schedule.h"
 
+enum mtm_node_role {
+    MTM_PASSIVE,
+    MTM_ACTIVE,
+    MTM_ANCHOR // an anchor is a active participant that never loses its slot 
+};
+
+
+void rand_sched_set_mobile(uint8_t enable);
 void rand_sched_init(uint8_t max_mtm_slots);
 void rand_sched_set_timeslot(uint8_t timeslot);
+void rand_sched_set_join_prob(uint16_t denominator);
+void rand_sched_set_rank(uint8_t rank);
 void rand_sched_start();
 void rand_sched_stop();
 

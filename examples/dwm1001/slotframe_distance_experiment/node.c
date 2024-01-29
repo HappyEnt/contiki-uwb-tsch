@@ -59,9 +59,11 @@
 #include "leds.h"
 
 #include "slotframe_evaluation_scheduler.h"
+#include "toulouse-nodes.h"
 
-
-
+#include "dw1000-arch.h"
+#include "decadriver/deca_device_api.h"
+#include "decadriver/deca_regs.h"
 /*---------------------------------------------------------------------------*/
 PROCESS(node_process, "RPL Node");
 PROCESS(TSCH_PROP_PROCESS, "TSCH localization User Process");
@@ -105,10 +107,12 @@ static void print_configuration() {
 
 void output_range_via_serial_snprintf(uint8_t addr_short, float range, int32_t freq_offset) {
     // use uart0_writeb(char byte) to write range
-    char buffer[50];
+    char buffer[70];
 
     // we output data in units of cm
-    int length = snprintf(buffer, 50, "TW, %u, %u, %d, "NRF_LOG_FLOAT_MARKER "\n", addr_short, current_slot_distance, freq_offset, NRF_LOG_FLOAT( range * 100 ) );
+    /* int length = snprintf(buffer, 60, "TW, %u, %u, %d, "NRF_LOG_FLOAT_MARKER "\n", addr_short, current_slot_distance, freq_offset, NRF_LOG_FLOAT( range * 100 ) ); */
+    /* int length = snprintf(buffer, 70, "TW, %u, %u, %d \n", addr_short, current_slot_distance, (int32_t) (range * 10000) ); */
+    int length = snprintf(buffer, 70, "TW, %u, %u, %ld, %ld\n", addr_short, current_slot_distance, (int32_t) (range * 10000), (int32_t) freq_offset);
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -128,7 +132,7 @@ void output_tdoa_via_serial(ranging_addr_t node1_addr, ranging_addr_t node2_addr
     // use uart0_writeb(char byte) to write range
     char buffer[70];
 
-    int length = snprintf(buffer, 70, "TD, %u, %u, %u, " NRF_LOG_FLOAT_MARKER "\n", current_slot_distance, node1_addr, node2_addr, NRF_LOG_FLOAT(dist * 100));
+    int length = snprintf(buffer, 70, "TD, %u, %u, %u, %ld\n", current_slot_distance, node1_addr, node2_addr, (int32_t) (dist * 10000));
 
     for (int i = 0; i < length; i++) {
         uart0_writeb(buffer[i]);
@@ -164,18 +168,39 @@ PROCESS_THREAD(TSCH_PROP_PROCESS, ev, data)
   PROCESS_END();
 }
 
+void enable_all_clocks() {
+    uint8 reg[2];    
+    dwt_readfromdevice(PMSC_ID, PMSC_CTRL0_OFFSET, 2, reg);
+    reg[0] = 0x00 ;
+    reg[1] = reg[1] & 0xfe;
+    dwt_writetodevice(PMSC_ID, PMSC_CTRL0_OFFSET, 1, &reg[0]);
+    dwt_writetodevice(PMSC_ID, 0x1, 1, &reg[1]);            
+}
+
+
+void perform_soft_reset() {
+    dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_INIT_STATE);    
+    /* dw_soft_reset(); */
+    dwt_softreset();
+    /* enable_all_clocks(); */
+    /* dwt_forcetrxoff(); // Turn the RX off */
+    /* dwt_rxreset(); // Reset in case we we     */
+    /* dwt_initialise(DWT_LOADNONE); // Reload the LDE microcode */
+    dw1000_arch_spi_set_clock_freq(DW_SPI_CLOCK_FREQ_IDLE_STATE);    
+}
+
 
 void slotframe_new_distance_callback(uint8_t new_distance) {
     current_slot_distance = new_distance;
-    printf("new slot distance %u\n", new_distance);
+    /* printf("new slot distance %u\n", new_distance); */
 }
 
 #if TESTBED_LILLE
 const linkaddr_t node_0_ll = { {  21, 215  } }; //dwm1001-1 */
 const linkaddr_t node_1_ll = { {  23, 206  } }; //dwm1001-2 */
 #elif TESTBED_TOULOUSE // using our custom linkaddr mapping
-const linkaddr_t node_0_ll = { { 82, 1 } };  //  dwm1001_1 */
-const linkaddr_t node_1_ll = { { 225, 2 } }; //  dwm1001_2 */
+const linkaddr_t *node_0_ll = &dwm1001_10_ll;
+const linkaddr_t *node_1_ll = &dwm1001_9_ll;
 #endif
 
 /* const linkaddr_t node_6_ll = { {  61, 196 } }; // dwm1001-7 */
@@ -199,15 +224,15 @@ PROCESS_THREAD(node_process, ev, data)
 
   set_slotframe_new_distance_callback(slotframe_new_distance_callback);
   
-  if(linkaddr_cmp(&node_0_ll, &linkaddr_node_addr)) {
+  if(linkaddr_cmp(node_0_ll, &linkaddr_node_addr)) {
       printf("=node type 0 initiator=\n");
       net_init(1);
-      tsch_set_send_beacons(1);      
+      tsch_set_send_beacons(1);
       slotframe_evaluation_length_scheduler_init(100, 0);
-  } else if(linkaddr_cmp(&node_1_ll, &linkaddr_node_addr)) {
+  } else if(linkaddr_cmp(node_1_ll, &linkaddr_node_addr)) {
       printf("=node type 1 responder =\n");
       net_init(0);
-      tsch_set_send_beacons(0);      
+      tsch_set_send_beacons(0);
       slotframe_evaluation_length_scheduler_init(100, 1);
   } else {
       printf("=node type 2 passive =\n");
@@ -219,7 +244,8 @@ PROCESS_THREAD(node_process, ev, data)
   etimer_set(&et, CLOCK_SECOND * 1);
   PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
-  etimer_set(&et, CLOCK_SECOND);
+  etimer_set(&et, CLOCK_SECOND*10);
+  /* perform_soft_reset();   */
   while(1) {
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et)
           || (ev == serial_line_event_message)
@@ -227,7 +253,7 @@ PROCESS_THREAD(node_process, ev, data)
 
       if(ev == serial_line_event_message) {
           char *serial_data = (char *)data;
-          printf("received line: %s\n", serial_data);
+          /* printf("received line: %s\n", serial_data); */
 
           if(serial_data[0] == 's') {
               // read number, skip one space
@@ -235,13 +261,17 @@ PROCESS_THREAD(node_process, ev, data)
               sscanf(serial_data, "s %d", &distance);
 
               // minimum slot distance is 1
-              if(distance > UINT8_MAX || distance < 1) {
+              if(distance > UINT8_MAX || distance < 0) {
                   printf("invalid distance\n");
               }
 
-              /* uint8_t sleep_after_rx = dwt_read32bitoffsetreg(PMSC_ID, PMSC_CTRL1_OFFSET) */
+              /* perform_soft_reset(); */
               
               generate_slotframe_with_distance(distance);
+          } else if (serial_data[0] == 'r') {
+              // perform soft reset
+              printf("perform soft reset\n");
+              perform_soft_reset();
           }
       }
 
@@ -257,6 +287,7 @@ PROCESS_THREAD(node_process, ev, data)
       uart_write_link_addr();
 
       if(etimer_expired(&et)) {
+          /* perform_soft_reset(); */
           etimer_reset(&et);
       }
   }

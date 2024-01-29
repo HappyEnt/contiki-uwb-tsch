@@ -221,7 +221,7 @@ PROCESS_THREAD(node_process, ev, data)
         }
     }
     
-    mtm_set_round_end(3);    
+    /* mtm_set_round_end(3);     */
   
   etimer_set(&et, CLOCK_SECOND * 1);
   PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));

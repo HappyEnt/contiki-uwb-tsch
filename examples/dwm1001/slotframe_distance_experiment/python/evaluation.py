@@ -1,6 +1,18 @@
 import numpy as np
+import scipy
 import matplotlib.pyplot as plt
 import sys, pickle
+import seaborn as sns
+import matplotlib.gridspec as grid_spec
+from sklearn.neighbors import KernelDensity
+import matplotlib as mpl
+
+sys.path.append('../../python_common')
+
+import imageio
+
+from iotlab_tools import get_node_list, get_short_node_id, get_position_mapping
+from generate_pretty_map_toulouse import generate_networkx_graph
 
 file_name = None
 
@@ -73,6 +85,11 @@ def load_distances_from_timestamps_measurements(file_name):
     
     return distance_measurements
 
+def load_dstwr_measurements(file_name):
+    # load pickle file
+    dstwr_measurements = pickle.load(open(file_name, 'rb'))
+    return dstwr_measurements
+
 # load the range estimations which where directly processed onboard of the device
 def load_distances_from_distance_measurements(file_name):
     # if file name ends on .txt
@@ -97,7 +114,7 @@ def load_distances_from_distance_measurements(file_name):
                 cfos[node1][node2] = []
             
             for (slot_dist, cfo, range) in distances_list:
-                dists[node1][node2].append(range)
+                dists[node1][node2].append(range/10000.0)
                 cfos[node1][node2].append(cfo)
     
     return dists, cfos
@@ -126,7 +143,7 @@ def filter_outliers(distances):
     filter_count = 0
     median = np.median(distances)
     for distance in distances:
-        if abs(distance - median) < 0.5*100:
+        if abs(distance - median) < 0.5:
             filtered_distances.append(distance)
         else:
             filter_count += 1
@@ -176,15 +193,36 @@ def load_twr_from_measurements_file_with_slot_distances(file_name):
                 if slot_dist not in dists[node1][node2]:
                     dists[node1][node2][slot_dist] = []
 
-                if abs(range) > 5e2:
-                    print("Range is too large: " + str(range))
-                    continue
+                # if abs(range) > 1e5:
+                #     print("Range is too large: " + str(range))
+                #     continue
 
-                dists[node1][node2][slot_dist].append(range)
+                dists[node1][node2][slot_dist].append(range/10000.)
 
             # dists[node1][node2][slot_dist] = filter_outliers(dists[node1][node2][slot_dist])
 
     return dists
+
+def load_atdoa_from_measurements_file_with_slot_distances(file_name):
+    distances = None
+    if file_name[-4:] == '.txt':
+        s = open(file_name, 'r').read()
+        distances = eval(s)
+    # else if on pkl
+    elif file_name[-4:] == '.pkl':
+        distances = pickle.load(open(file_name, 'rb'))
+
+    for node1 in distances:
+        for node2 in distances[node1]:
+            for slot_dist in distances[node1][node2]:
+                distance_list = distances[node1][node2][slot_dist]
+                # divide by 10000
+                for i in range(len(distance_list)):
+                    distance_list[i] = distance_list[i]/10000.0
+                    
+                distances[node1][node2][slot_dist] = distance_list
+
+    return distances
 
     
 
@@ -194,7 +232,7 @@ def load_twr_from_measurements_file_with_slot_distances(file_name):
 # distances_1_2_from_timestamps = filter_outliers(ts_distances[1][2])
 
 def plot_ground_truth(ax, testbed_positions, id1, id2):
-    dist = calculate_ground_truth_distance(testbed_positions, id1, id2) * 100
+    dist = calculate_ground_truth_distance(testbed_positions, id1, id2)
     ax.axhline(y=dist, color='r', linestyle='-', label='Ground truth')
     
 
@@ -227,20 +265,20 @@ def plot_distance_differences(ax, distance_differences, experiment_desc):
     plt.title(experiment_desc)
 
 def plot_twr_per_slot_dist(ax_clean, ax_scatter, dist_distances_dict, experiment_desc):
-    means = []
+    means = [] 
     variances = []
     for dist, ranges in dist_distances_dict.items():
-        means.append(np.mean(ranges))
-        variances.append(np.var(ranges))
+        means.append(np.mean(filter_outliers(ranges)))
+        variances.append(np.std(filter_outliers(ranges)))
 
     all_ranges = []
     dist_markers_positions = []
     for dist, ranges in dist_distances_dict.items():
-        if (dist % 10) == 0:
+        if (dist % 5) == 0:
             print(dist)
             dist_markers_positions.append(len(all_ranges))
             
-        all_ranges.extend(ranges)
+        all_ranges.extend(filter_outliers(ranges))
 
 
     # plot all ranges
@@ -267,100 +305,479 @@ def plot_twr_per_slot_dist(ax_clean, ax_scatter, dist_distances_dict, experiment
     plt.title(experiment_desc)
 
 
-# ---------------------- distances per slot -----------------------
-# fig, ax = plt.subplots()
-# dists_more_adv = load_twr_from_measurements_file_with_slot_distances("distance_measurements_long_with_more_advertisement.txt")
-# plot_twr_per_slot_dist(ax, dists_more_adv[2][1], "Distances per slot distance")
-# plt.show()
-
-# ---------------------- dist diff per slot -----------------------
-# fig, ax = plt.subplots()
-# dists_diff_more_adv = load_tdoa_from_measurents_file_with_slot_distances("distances_differences_long_with_more_advertising.txt")
-# plot_twr_per_slot_dist(ax, dists_diff_more_adv[13][(2,1)], "Distances per slot distance")
-# plt.show()
-
-
-# ----------------------- Distance Differences Experiments --------------------#
-# dists_diffs_float = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_float.txt")
-# dists_diffs_double = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_double.txt")
-# dists_diffs_more_double = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_even_more_double.txt")
-# dists_diffs_double_256 = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_even_double_256_preamble.txt")
-# dists_diffs_double_256_long = load_distance_differences_from_measurents_file_without_slotdistances("distance_differences_double_really_long_256_preamble.txt")
-# dists_diffs_more_adv = load_distance_differences_from_measurents_file_without_slotdistances("distances_differences_long_with_more_advertising.txt")
-
-# fig, axs = plt.subplots(4, 1, sharex=True)
-
-# current_ax = 0
-# for node_passive, measurements_dict in dists_diffs_more_adv.items():
-#     for anchor_pair, dist_diffs in measurements_dict.items():
-#         ax = axs[current_ax]
-#         current_ax += 1
-#         plot_distance_differences(ax, filter_outliers(dist_diffs), f"chan 7 (PHY 5 PRF 64), 2.5ms slot length, {node_passive} with {anchor_pair}, 256 preamble" )
-        
-# plt.show()
     
-                              
-# ----------------------- Distance Experiments --------------------#
-# dists7, cfos7 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us.txt")
-# dists3, cfos3 = load_distances_from_distance_measurements("distances_with_cfos_chan_3.txt")
-# dists11, cfos11 = load_distances_from_distance_measurements("distances_with_cfos_chan_11_2500us.txt")
-# dists_256, cfos_256 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_256_preamble.txt")
-# dists_64, cfos_64 = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_64_preamble.txt")
-# dists_880kb, cfos_880kb = load_distances_from_distance_measurements("distances_with_cfos_880kbs.txt")
-# # there was a bug in the code during channel selection, this data is measured with the fix in place
-# dists7_corr, cfos7_corr = load_distances_from_distance_measurements("distances_with_cfos_chan_7_2500us_corrected_code.txt")
-# dists3_corr, cfos3_corr = load_distances_from_distance_measurements("distances_with_cfos_chan_3_2500us_corrected_code.txt")
-# dists_256_double, cfo_256_double = load_distances_from_distance_measurements("distances_with_cfos_double_256_preamble.txt")
-# dists_256_long, cfo_256_long = load_distances_from_distance_measurements("distance_measurements_double_256_preamble_really_long.txt")
-# dists_more_adv, cfo_more_adv = load_distances_from_distance_measurements("distance_measurements_long_with_more_advertisement.txt")
-# dists_only_one_beacon, cfo_only_one_beacon = load_distances_from_distance_measurements("experiments/distance_measurements_only_one_beacon_sender.txt")
+def paper_plot_per_distance_error(ax, dist_distances_dict, dstwrs):
+    # first plot histogram of dstwrs in relative frequencies, i.e., percentual
+    # divide dstwrs by 10000
+    dstwrs = [x/10000. for x in dstwrs]
+    
+    weights_dstwrs = [1./len(dstwrs)]*len(dstwrs)
+    ax.hist(dstwrs, bins=20, weights=weights_dstwrs, alpha=0.5, label="DSTWR")
+    
+    # next overlay from dist_distances_dict the values for 5, 25, 50, 75
+    for dist in [5, 25, 50, 75]:
+        data = filter_outliers(dist_distances_dict[dist])
+        weights_data = [1./len(data)]*len(data)
+        ax.hist(data, bins=20, weights=weights_data, alpha=0.5, label=str(dist) + " cm")
 
-dists_10ms, cfo_10ms  = load_distances_from_distance_measurements("experiments/distance_measurements_10ms.pkl")
-raw_distances_10ms = load_twr_from_measurements_file_with_slot_distances("experiments/distance_measurements_10ms.pkl")
+    plt.legend()
+    plt.xlabel("Distance [cm]")
+    plt.ylabel("Relative Frequency")
+    plt.title("Distance error distribution")
+    plt.show()
 
-dists_no_comp, cfo_no_comp  = load_distances_from_distance_measurements("experiments/distance_measurements_no_comp.pkl")
-raw_distances_no_comp = load_twr_from_measurements_file_with_slot_distances("experiments/distance_measurements_no_comp.pkl")
+def mean_confidence_interval(data, confidence=0.95):
+    a = 1.0 * np.array(data)
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return m, m-h, m+h
 
-dists_no_autoack, cfo_no_autoack  = load_distances_from_distance_measurements("experiments/distance_measurements_no_autoack.pkl")
-raw_distances_no_autoack = load_twr_from_measurements_file_with_slot_distances("experiments/distance_measurements_no_autoack.pkl")
+    
+def paper_plot_per_distance_error_fancy(ax, dist_distances_dict, dstwrs, title, output_path, ground_truth = None):
+    # DSTWR line
+    #divide dstwrs by 10000
+    # if dstwrs != None:
+    #     dstwrs = [x/10000. for x in dstwrs]
+    #     dstwr_mean = np.mean(dstwrs)
+    #     dstwr_vari = np.std(dstwrs)
+    #     # do a horizontal line
+    #     # ax.axhline(y=dstwr_mean, color='black', linestyle='dashed', label='Single Slot DSTWR')
+    #     # # also plot variances as colored region
+    #     # ax.axhspan(dstwr_mean - dstwr_vari, dstwr_mean + dstwr_vari, alpha=0.5, color='lightgray')
+    #     ax.axhline(y=dstwr_mean, color='gray', linestyle='--', label='Single Slot DSTWR')
+    #     # Variance as colored region
+    #     ax.axhspan(dstwr_mean - dstwr_vari, dstwr_mean + dstwr_vari, alpha=0.2, color='gray')
 
-fig, (ax3, ax4, ax5, ax6) = plt.subplots(4, 1)
-plot_twr_per_slot_dist(ax3, ax4, raw_distances_10ms[1][2], "chan 7 (PHY 5 PRF 64), 10ms slot length, 1 <-> 2, 128 preamble" )
-plot_twr_per_slot_dist(ax5, ax6, raw_distances_no_autoack[1][2], "chan 7 (PHY 5 PRF 64), 10ms slot length, 1 <-> 2, 128 preamble" )
-plot_ground_truth(ax4, toulouse_node_positions, 1, 2)
-plot_ground_truth(ax3, toulouse_node_positions, 1, 2)
-plot_ground_truth(ax6, toulouse_node_positions, 1, 2)
-plot_ground_truth(ax5, toulouse_node_positions, 1, 2)
+    if ground_truth != None:
+        # dashed line
+        # thicker a little bit
+        ax.axhline(y=ground_truth, color='red', linestyle='dashed', label='Ground truth', linewidth=2)
 
-# fig, (ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9) = plt.subplots(9, 1, figsize=(15, 30))
-# plot_cfos_and_distances(ax1, filter_outliers(dists7[1][2]), cfos7[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 128 preamble" )
-# plot_cfos_and_distances(ax2, filter_outliers(dists_880kb[1][2]), cfos_880kb[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 880kbps, 128 preamble" )
-# plot_cfos_and_distances(ax3, filter_outliers(dists11[1][2]), cfos11[1][2], "chan 11, 2.5ms slot length, 1 <-> 2, 128 preamble" )
-# plot_cfos_and_distances(ax4, filter_outliers(dists_64[1][2]), cfos_64[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 64 preamble" )
-# plot_cfos_and_distances(ax5, filter_outliers(dists_256[1][2]), cfos_256[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble" )
-# plot_cfos_and_distances(ax6, filter_outliers(dists3[1][2]), cfos3[1][2], "chan 3 (PHY 5 PRF 16), 5ms slot length, 1 <-> 2, 128 preamble" )
-# plot_cfos_and_distances(ax7, filter_outliers(dists_256[2][1]), cfos_256[2][1], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 2 <-> 1, 256 preamble" )
-# plot_cfos_and_distances(ax8, filter_outliers(dists7_corr[1][2]), cfos7_corr[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 128 preamble, corrected code" )
-# plot_cfos_and_distances(ax9, filter_outliers(dists3_corr[1][2]), cfos3_corr[1][2], "chan 3 (PHY 5 PRF 16), 2.5ms slot length, 1 <-> 2, 128 preamble, corrected code" )
+    dist_distances_dict = dist_distances_dict[10][9]
+
+    # sort dist_distance_dict keys
+    distances = []
+    dstwrs_means = []
+    dstwrs_std_devs = []    
+    means = []
+    std_devs = []
+    for i, (dist, measurements) in enumerate(dist_distances_dict.items()):
+        distances.append(dist)
+        means.append(np.mean(filter_outliers(measurements)))
+        m, upper, lower = mean_confidence_interval(filter_outliers(measurements))
+        std_devs.append(np.std(filter_outliers(measurements)))
+        print("Distance: {} cm, mean: {} cm, std: {} cm".format(distances[i], means[i], std_devs[i]))
+
+    for dist, dstwr_dist_dict in dstwrs.items():
+        dstwrs_ = [x / 10000 for x in dstwr_dist_dict[10][9]]
+        dstwrs_means.append(np.mean((dstwrs_)))
+        dstwrs_std_devs.append(np.std((dstwrs_)))
+        
+    # zip distances and means and std_devs and sort by distances, afterward unzip again
+    distances, means, std_devs = zip(*sorted(zip(distances, means, std_devs)))
+
+    print(distances)
+
+    # plot dstwrs_means and add std_devs as shaded areas
+    ax.plot(distances, dstwrs_means, label='DSTWR', color='black', linestyle='--')
+    ax.fill_between(distances, np.array(dstwrs_means) - np.array(dstwrs_std_devs), np.array(dstwrs_means) + np.array(dstwrs_std_devs), alpha=0.2, color='black')
+
+    # Plotting means with error bars for variance
+    ax.errorbar(distances, means, yerr=std_devs, fmt='o', capsize=5, label='MTM-DSTWR', color='steelblue', markerfacecolor='firebrick')
+
+
+    
+    
+
+    # Setting labels, title, and legend
+    ax.set_xlabel('Slot Spacing')
+    ax.set_ylabel('Distance (m)')
+    ax.set_title(title)
+    ax.legend()
+
+    # Optional grid for better readability
+    # ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+    # Ensuring all data points and their variances are within the plot limits
+    ax.set_ylim([min(means) - max(std_devs)*1.5, max(means) + max(std_devs)*1.5])
+    plt.tight_layout()  # Ensure that everything fits within the figure nicely
+
+    # save figure
+    plt.savefig(output_path, format='pdf', dpi=1200)
+
+        
+    
+    
+def plot_dstwr_scatter(ax, dstwr, experiment_desc):
+    ax.scatter(range(len(dstwr)), dstwr, color='black', alpha=0.5, marker='x')
+    ax.set_xlabel('DSTWR distance [cm]')
+    ax.set_ylabel('Ground truth distance [cm]')
+    plt.title(experiment_desc)
+
+def plot_dstwr_derived_ground_truth(ax, dstwr):
+    means = []
+    variances = []
+    means.append(np.mean(dstwr))
+    variances.append(np.std(dstwr))
+
+    # plot as horizontal line
+    ax.axhline(y=means[0], color='blue', linestyle='-', label='Ground truth')
+
+
+def plot_fancy_error_jumping(ax, measurements, experiment_desc):
+    def moving_average(a, n=3):
+        ret = np.cumsum(a, dtype=float)
+        ret[n:] = ret[n:] - ret[:-n]
+        return ret[n - 1:] / n
+
+    window_size = 100
+    means = moving_average(measurements, window_size)
+    # variances = moving_variance(measurements, window_size)
+    # std_devs = np.sqrt(variances)
+    n_points = len(measurements)
+
+    # plt.plot(moving_average, label="Measurements", color='lightgrey', alpha=0.5)
+
+    # Plot the moving averages
+    plt.plot(range(window_size-1, n_points), means, label="Moving Average", color='blue')
+
+    # Shade the area between mean ± std deviation
+    # plt.fill_between(range(window_size-1, n_points), means - std_devs, means + std_devs, color='red', alpha=0.2, label='1 Std Deviation')
+
+    plt.title("Sudden Offsets During Long IDLE periods")
+    plt.xlabel("Measurement Number")
+    plt.ylabel("Distance (m)")
+    plt.legend()
+    plt.tight_layout()
+    # save figure
+    plt.savefig("plots/long_idle.pdf", format='pdf', dpi=1200)
+    plt.show()
+
+
+
+def plot_ridge_plot(dist_dict):
+    distances = dist_dict.keys()
+    # atleast 10
+    colors = ['#0000ff', '#3300cc', '#660099', '#990066', '#cc0033', '#ff0000', '#0000ff', '#3300cc', '#660099', '#990066', '#cc0033', '#ff0000', '#0000ff', '#3300cc', '#660099', '#990066', '#cc0033', '#ff0000']
+
+    gs = grid_spec.GridSpec(len(distances),1)
+    fig = plt.figure(figsize=(16,9))
+
+    i = 0
+
+    x_min = 4.5
+    x_max = 4.8
+
+    ax_objs = []
+
+    # calculate standard deviations range
+    std_devs = []
+    for dist, measurements in dist_dict.items():
+        std_devs.append(np.std(filter_outliers(measurements)))
+
+    # determine std dev range
+    std_dev_min = min(std_devs)
+    std_dev_max = max(std_devs)
+
+    # create colormap
+    cmap = plt.cm.get_cmap('coolwarm')
+    norm = mpl.colors.Normalize(vmin=std_dev_min, vmax=std_dev_max)
+
+    # get all values
+    all_measurements = dist_dict.values()
+
+    # zip with distances and reverse order
+    all_measurements_dict = zip(distances, all_measurements)
+    all_measurements_dict = sorted(all_measurements_dict, key=lambda x: x[0], reverse=True)
+    
+    for (dist, measurements) in all_measurements_dict:
+        x = np.array(filter_outliers(measurements))
+        x_d = np.linspace(x_min,x_max, 1000)
+
+        kde = KernelDensity(bandwidth=0.03, kernel='gaussian')
+        # x is 1D
+        kde.fit(x[:, None])
+
+        logprob = kde.score_samples(x_d[:, None])
+
+        # creating new axes object
+        ax_objs.append(fig.add_subplot(gs[i:i+1, 0:]))
+
+        # plotting the distribution
+        ax_objs[-1].plot(x_d, np.exp(logprob),color="#f0f0f0",lw=1)
+
+        # color depending on std dev range colormap
+        color = cmap(norm(np.std(x)))
+        
+        ax_objs[-1].fill_between(x_d, np.exp(logprob), alpha=0.7,color=color)
+        
+        # setting uniform x and y lims
+        ax_objs[-1].set_xlim(x_min,x_max)
+        ax_objs[-1].set_ylim(0,20)
+
+        # make background transparent
+        rect = ax_objs[-1].patch
+        rect.set_alpha(0)
+
+        # remove borders, axis ticks, and labels
+        ax_objs[-1].set_yticklabels([])
+
+        if i == len(distances)-1:
+            ax_objs[-1].set_xlabel("Measured Distance (m)", fontsize=16,fontweight="bold")
+        else:
+            ax_objs[-1].set_xticklabels([])
+
+        spines = ["top","right","left","bottom"]
+        for s in spines:
+            ax_objs[-1].spines[s].set_visible(False)
+
+        # adj_country = country.replace(" ","\n")
+        adj_country = str(dist)
+        ax_objs[-1].text(4.5,0,adj_country,fontweight="bold",fontsize=14,ha="left")
+        
+        i += 1
+
+    gs.update(hspace=-0.7)
+
+    fig.text(0.07,0.85,"Distribution of Aptitude Test Results from 18 – 24 year-olds",fontsize=20)
+
+    plt.tight_layout()
+    plt.show()
+    
+
+def plot_fancy_variances(dist_distances_dict, atdoa_distances_dict, experiment_desc, output_path):
+    sns.set_style("whitegrid")
+
+    fig, ax = plt.subplots()
+
+    distances = []
+    means = []
+    std_devs = []
+    for i, (dist, measurements) in enumerate(dist_distances_dict.items()):
+        distances.append(dist)
+        means.append(np.mean(filter_outliers(measurements)))
+        m, upper, lower = mean_confidence_interval(filter_outliers(measurements))
+        std_devs.append(np.std(filter_outliers(measurements)))    
+
+    distances, means, std_devs = zip(*sorted(zip(distances, means, std_devs)))
+
+    std_devs = [x * 100 for x in std_devs]
+    
+    ax.plot(distances, std_devs, marker='o', linestyle='-', linewidth=2, label='MTM-DSTWR')
+
+    distances = []
+    means = []
+    std_devs = []
+    for i, (dist, measurements) in enumerate(list(atdoa_distances_dict.items())):
+        if dist == 0:
+            continue
+        distances.append(dist)
+        means.append(np.mean(filter_outliers(measurements)))
+        m, upper, lower = mean_confidence_interval(filter_outliers(measurements))
+        std_devs.append(np.std(filter_outliers(measurements)))
+
+    distances, means, std_devs = zip(*sorted(zip(distances, means, std_devs)))
+
+    # we want cms
+    std_devs = [x * 100 for x in std_devs]
+    
+    ax.plot(distances, std_devs, marker='o', linestyle='-', linewidth=2, label='MTM-ATDoA')
+
+    ax.grid(True)
+    
+    # set fig title
+    plt.title(experiment_desc)
+    plt.xlabel("Slot Spacing")
+    plt.ylabel("Standard Deviation (cm)")
+    # legend
+    plt.legend(loc='upper left')
+
+    plt.tight_layout()
+    plt.savefig(output_path, format='pdf', dpi=1200)
+    
+    plt.show()
+
+
+
+def sliding_window_dstwr(dstwrs_distances):
+    window_size = 10
+    means = []
+
+    # Sliding the window and calculating the mean
+    for i in range(len(dstwrs_distances) - window_size + 1):
+        window = dstwrs_distances[i: i + window_size]
+        mean_val = sum(window) / window_size
+        means.append(mean_val)
+
+    # Plotting the results
+    plt.figure(figsize=(10, 6))
+    plt.plot(means, label='Mean Distance')
+    plt.xlabel('Index')
+    plt.ylabel('Mean Distance')
+    plt.title('Mean Distance in Sliding Window of Size 100')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+sns.set_theme()    
+sns.set_style('whitegrid')
+
+node_list = get_node_list("toulouse", "dwm1001:dw1000")
+node_positions = get_position_mapping(node_list)
+
+# # PAPER SYMMETRIC
+# ds_twr = load_dstwr_measurements("experiments/good/dstwr_measurements_working_reset.pkl")
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good/distance_measurements_working_reset.pkl")
+# dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good/distance_measurements_working_reset.pkl")
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[9][10], ds_twr[9][10], title = "Influence of Slot Spacing on MTM-DSTWR Measurement Accuracy in Comparison to Single Slot DSTWR", output_path = "plots/dstwr_per_distance_error_symmetric_fancy.pdf")
+
+# # PAPER ASSYMMETRIC
+# ds_twr = load_dstwr_measurements("experiments/good/dstwr_measurements_working_assymmetric.pkl")
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good/distance_measurements_working_assymmetric.pkl")
+# dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good/distance_measurements_working_assymmetric.pkl")
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[1][2], ds_twr[1][2], title = "Influence of Slot Spacing on MTM-DSTWR Measurement Accuracy in Comparison to Single Slot DSTWR", output_path = "plots/dstwr_per_distance_error_assymetric_fancy.pdf")
+
+# PAPER Error Example
+# fig, ax1 = plt.subplots(1, 1)
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/distance_measurements_single_70_dist.pkl")
+# # plot_cfos_and_distances(ax1, filter_outliers(dists_fixed_100[2][1]), cfo_fixed_100[2][1], "")
+# plot_fancy_error_jumping(ax1, filter_outliers(dists_fixed_100[2][1][100:]), "")
+# plt.show()
+
+
+# ds_twr = load_dstwr_measurements("experiments/hfclk/dstwr_measurements.pkl")
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/hfclk/distance_measurements.pkl")
+# dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/hfclk/distance_measurements.pkl")
+# # fig, ax = plt.subplots(1, 1)
+# # paper_plot_per_distance_error_fancy(ax, dists_dict[9][10], ds_twr[9][10], title = "Influence of Slot Spacing on MTM-DSTWR Measurement Accuracy in Comparison to Single Slot DSTWR", output_path = "plots/dstwr_per_distance_error_assymetric_fancy.pdf")
+# fig, (ax1, ax2) = plt.subplots(2, 1)
+# plot_cfos_and_distances(ax1, filter_outliers(dists_fixed_100[10][9]), cfo_fixed_100[10][9], "")
+
+
+print("500 Samples, 10 distance Steps")
+
+def calculate_ground_truth_distances(node_positions, node_pair):
+    node_1_id = 'dwm1001-' + str(node_pair[0])
+    node_2_id = 'dwm1001-' + str(node_pair[1])
+    node1_pos = np.array(node_positions[node_1_id])
+    node2_pos = np.array(node_positions[node_2_id])
+
+    dist = np.linalg.norm(node1_pos - node2_pos)
+
+    return dist
+
+
+# "distance_difference_measurements.pkl"
+
+# PAPER 500 samples
+# ds_twr = load_dstwr_measurements("experiments/good_500_samples_tdoa_dstwr/dstwr_measurements_symmetric.pkl")
+# atdoa = load_atdoa_from_measurements_file_with_slot_distances("experiments/good_500_samples_tdoa_dstwr/distance_difference_measurements_symmetric.pkl")
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good_500_samples_tdoa_dstwr/distance_measurements_symmetric.pkl")
+# dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good_500_samples_tdoa_dstwr/distance_measurements_symmetric.pkl")
+
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, atdoa[14][(9, 10)], None, "", "plots/atdoa_per_distance_error_symmetric_fancy.pdf")
+# plt.show()
+
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[10][9], ds_twr[10][9], title = "Influence of Slot Spacing on MTM-DSTWR Accuracy (Symmetric)", output_path = "plots/dstwr_per_distance_error_symmetric_fancy.pdf")
+# plt.show()
+
+# plot_fancy_variances(ax, dists_dict[9][10], "")
+# plot_fancy_variances(ax, atdoa[14][(9, 10)], "")
+
+# PAPER 1000 samples symmetric
+ds_twr = load_dstwr_measurements("experiments/good_1000_samples_tdoa_dstwr/dstwr_measurements_symmetric.pkl")
+atdoa = load_atdoa_from_measurements_file_with_slot_distances("experiments/good_1000_samples_tdoa_dstwr/distance_difference_measurements_symmetric.pkl")
+dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good_1000_samples_tdoa_dstwr/distance_measurements_symmetric.pkl")
+dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good_1000_samples_tdoa_dstwr/distance_measurements_symmetric.pkl")
+
+# plot_ridge_plot(dists_dict[9][10])
+
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, atdoa[14][(9, 10)], None, "", "plots/atdoa_per_distance_error_symmetric_fancy.pdf")
+# plt.show()
+
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[10][9], ds_twr[10][9], title = "Influence of Slot Spacing on MTM-DSTWR Accuracy (Symmetric)", output_path = "plots/dstwr_per_distance_error_symmetric_fancy.pdf")
+# plt.show()
+
+# # # sliding_window_dstwr(ds_twr[10][9])
+# plot_fancy_variances(dists_dict[9][10], atdoa[14][(9, 10)], "Influence of Slot Spacing on Deviation of Measurements (Symmetric)", "plots/dstwr_per_distance_error_std_devs_symmetric_fancy.pdf")
+
+# PAPER 1000 samples asymmetric
+ds_twr = load_dstwr_measurements("experiments/good_1000_samples_tdoa_dstwr/dstwr_measurements_asymmetric.pkl")
+atdoa = load_atdoa_from_measurements_file_with_slot_distances("experiments/good_1000_samples_tdoa_dstwr/distance_difference_measurements_asymmetric.pkl")
+dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good_1000_samples_tdoa_dstwr/distance_measurements_asymmetric.pkl")
+dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good_1000_samples_tdoa_dstwr/distance_measurements_asymmetric.pkl")
+
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, atdoa[14][(10, 9)], None, "", "plots/atdoa_per_distance_error_asymmetric_fancy.pdf")
+# plt.show()
+
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[10][9], ds_twr[10][9], title = "Influence of Slot Spacing on MTM-DSTWR Accuracy (Symmetric)", output_path = "plots/dstwr_per_distance_error_asymmetric_fancy.pdf")
+# plt.show()
+
+# # sliding_window_dstwr(ds_twr[10][9])
+# plot_fancy_variances(dists_dict[9][10], atdoa[14][(10, 9)], "Influence of Slot Spacing on Deviation of Measurements (Asymmetric)", output_path = "plots/dstwr_per_distance_error_std_devs_asymmetric_fancy.pdf")
+
+# PAPER 1
+print("NEW")
+# ds_twr = load_dstwr_measurements("experiments/good_with_fix/dstwr_measurements_symmetric.pkl")
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good_with_fix/distance_measurements_symmetric.pkl")
+# dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good_with_fix/distance_measurements_symmetric.pkl")
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[9][10], ds_twr[9][10], title = "Influence of Slot Spacing on MTM-DSTWR Accuracy (Symmetric)", output_path = "plots/dstwr_per_distance_error_symmetric_fancy.pdf")
+# plot_fancy_variances(ax, dists_dict[9][10], "")
+
+# fig, ax = plt.subplots(1, 1)
+# plot_cfos_and_distances(ax, filter_outliers(dists_fixed_100[9][10]), cfo_fixed_100[9][10], "")
+# plt.show()
+
+# PAPER 2
+
+# ds_twr = load_dstwr_measurements("experiments/good_with_fix/dstwr_measurements_assymetric.pkl")
+# dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good_with_fix/distance_measurements_assymetric.pkl")
+# dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good_with_fix/distance_measurements_assymetric.pkl")
+# fig, ax = plt.subplots(1, 1)
+# paper_plot_per_distance_error_fancy(ax, dists_dict[9][10], ds_twr[9][10], title = "Influence of Slot Spacing on MTM-DSTWR Accuracy (Assymetric)", output_path = "plots/dstwr_per_distance_error_assymetric_fancy.pdf")
+# plot_fancy_variances(ax, dists_dict[9][10], "")
+# fig, ax = plt.subplots(1, 1)
+
+
+# fig, ax = plt.subplots(1, 1)
+# plot_cfos_and_distances(ax, measurements, cfo_fixed_100[9][10], "")
+# plt.show()
+
+
+# fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
+# plot_twr_per_slot_dist(ax1, ax2, raw_distances_dist_50[1][2], "chan 7 (PHY 5 PRF 64), 10ms slot length, 1 <-> 2, 128 preamble" )
+# plot_cfos_and_distances(ax3, filter_outliers(dists_fixed_100[2][1]), cfo_fixed_100[2][1], "")
+# plot_dstwr_scatter(ax4, ds_twr[1][2], "DSTWR distance measurements, 1 <-> 2, 128 preamble")
+
+# plot_dstwr_derived_ground_truth(ax1, ds_twr[1][2])
+# plot_dstwr_derived_ground_truth(ax2, ds_twr[1][2])
 # plot_ground_truth(ax1, toulouse_node_positions, 1, 2)
 # plot_ground_truth(ax2, toulouse_node_positions, 1, 2)
 # plot_ground_truth(ax3, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax4, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax5, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax6, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax7, toulouse_node_positions, 2, 1)
-# plot_ground_truth(ax8, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax9, toulouse_node_positions, 1, 2)
+# plt.show()
 
-# fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(15, 10))
-# plot_cfos_and_distances(ax1, filter_outliers(dists_256_double[1][2]), cfo_256_double[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, double" )
-# plot_cfos_and_distances(ax2, filter_outliers(dists_256_long[1][2]), cfo_256_long[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, really long" )
-# plot_cfos_and_distances(ax3, filter_outliers(dists_more_adv[1][2]), cfo_more_adv[1][2], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 1 <-> 2, 256 preamble, more adv" )
-# plot_cfos_and_distances(ax4, filter_outliers(dists_more_adv[2][1]), cfo_more_adv[2][1], "chan 7 (PHY 5 PRF 64), 2.5ms slot length, 2 <-> 1, 256 preamble, more adv" )
-# plot_ground_truth(ax1, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax2, toulouse_node_positions, 1, 2)
-# plot_ground_truth(ax3, toulouse_node_positions, 1, 2)
 
-# save as img
-plt.savefig("distances_image_complete.png")
+
+# NEW NEW With correct callibration
+ds_twr = load_dstwr_measurements("experiments/good_no_antenna/dstwr_measurements_symmetric.pkl")
+dists_fixed_100, cfo_fixed_100  = load_distances_from_distance_measurements("experiments/good_no_antenna/distance_measurements_symmetric.pkl")
+dists_dict = load_twr_from_measurements_file_with_slot_distances("experiments/good_no_antenna/distance_measurements_symmetric.pkl")
+
+fig, ax = plt.subplots(1, 1)
+paper_plot_per_distance_error_fancy(ax, dists_dict, ds_twr, title = "Influence of Reply Duration on MTM-DSTWR Estimates", output_path = "plots/symmetric_distance_antenna_delay_fix.pdf", ground_truth=calculate_ground_truth_distances(node_positions, (10,9)))
+plot_fancy_variances(dists_dict[9][10], atdoa[14][(10, 9)], "Influence of Reply Duration on Standard Deviation of MTM-DSTWR Estimates", output_path = "plots/symmetric_distance_variances_antenna_delay_fix.pdf")
 plt.show()
+
+# # sliding_window_dstwr(ds_twr[10][9])
+# plot_fancy_variances(dists_dict[9][10], atdoa[14][(10, 9)], "Influence of Slot Spacing on Deviation of Measurements (Asymmetric)", output_path = "plots/dstwr_per_distance_error_std_devs_asymmetric_fancy.pdf")

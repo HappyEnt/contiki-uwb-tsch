@@ -137,8 +137,6 @@ def main():
                 if current_distance == max_distance:
                     finished = True
                     break
-                
-
                            
             except KeyboardInterrupt:
                 print("Interrupted by user ...")
