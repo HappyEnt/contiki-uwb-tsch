@@ -75,11 +75,6 @@
 #define _PRINTF(...)
 #endif
 
-// NRF SDK does not support long long, so we define here some macros to dissect the number into two parts
-// has to be converted in the mind of the reader :)
-#define LOG_LLU_MARK "0x%08x%08x"
-#define LOG_LLU(bigint) (uint32_t)(((bigint) >> 32)), (uint32_t)((bigint) & 0xFFFFFFFF)
-
 #define SPEED_OF_LIGHT_M_PER_S 299702547.236
 #define SPEED_OF_LIGHT_M_PER_UWB_TU ((SPEED_OF_LIGHT_M_PER_S * 1.0E-15) * 15650.0) // around 0.00469175196
 
@@ -139,10 +134,11 @@ static enum MTM_SLOT_END_TYPE slot_end_type;
 
 #if WITH_MTM_BUS_BOARDING
 static uint8_t bus_boarding_begin = 0; // will be constantly update to mark current timeslot from which to save timestamps
-#endif
+
 
 static uint8_t bus_boarding_timeslot_active(uint8_t timeslot);
 static void bus_boarding_update();
+#endif
 
 // this will be used to return a array of timestamps that we read from the user
 static struct mtm_packet_timestamp return_timestamps[TSCH_MTM_PROP_MAX_NEIGHBORS];
@@ -638,7 +634,6 @@ void add_mtm_reception_timestamp(
     #endif
 
     // next we extract information for two way ranging
-    int found_rx = 0;
     for(uint8_t i = 0; i < num_rx_timestamps; i++) {
         if(rx_timestamps[i].addr == linkaddr_node_addr.u8[LINKADDR_SIZE - 1]) {
                 uint64_t rx_timestamp_B = rx_timestamps[i].rx_timestamp;
@@ -656,7 +651,6 @@ void add_mtm_reception_timestamp(
                 n->ts.r_a2 = rx_timestamp_A;
 
                 mtm_compute_dstwr(asn, n);
-                found_rx = 1;
                 n->total_found_ours_counter++; // yippie
                 mtm_sucessfull_rounds++;
         }
@@ -664,9 +658,6 @@ void add_mtm_reception_timestamp(
 }
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp) {
-    // Update mtm_neighbor list after our own transmission event
-    struct mtm_neighbor *n = NULL;
-
     most_recent_tx_timestamp = tx_timestamp;
 }
 
@@ -681,47 +672,50 @@ void print_ds_twr_durations(struct ds_twr_ts *ts) {
     // ts->txB1 - ts->rxB1;
     replier_reply = interval_correct_overflow(ts->t_b1, ts->r_b1);
 
-    _PRINTF("MTM: Initiator roundtrip: %d\n", initiator_roundtrip);
-    _PRINTF("MTM: Initiator reply: %d\n", initiator_reply);
-    _PRINTF("MTM: Replier roundtrip: %d\n", replier_roundtrip);
-    _PRINTF("MTM: Replier reply: %d\n", replier_reply);
+    printf("MTM: Initiator roundtrip: %" PRId64 "\n", initiator_roundtrip);
+    printf("MTM: Initiator reply: %" PRId64 "\n", initiator_reply);
+    printf("MTM: Replier roundtrip: %" PRId64 "\n", replier_roundtrip);
+    printf("MTM: Replier reply: %" PRId64 "\n", replier_reply);
 }
 
 void debug_output_ds_twr_timestamps(struct ds_twr_ts *ts, ranging_addr_t neighbor_addr) {
     printf("tstx1, ");
     /* uint64_t t_a1, r_b1, t_b1, r_a1, t_a2, r_b2, t_b2, r_a2;     */
-    printf("%u, ", neighbor_addr);
-    printf("%u:%u, ", (uint32_t)(ts->t_a1 >> 32), (uint32_t)(ts->t_a1));
-    printf("%u:%u, ", (uint32_t)(ts->r_b1 >> 32), (uint32_t)(ts->r_b1));
-    printf("%u:%u, ", (uint32_t)(ts->t_b1 >> 32), (uint32_t)(ts->t_b1));
-    printf("%u:%u, ", (uint32_t)(ts->r_a1 >> 32), (uint32_t)(ts->r_a1));
-    printf("%u:%u, ", (uint32_t)(ts->t_a2 >> 32), (uint32_t)(ts->t_a2));
-    printf("%u:%u ", (uint32_t)(ts->r_b2 >> 32), (uint32_t)(ts->r_b2));
+    printf("%" PRIu8 ", ", neighbor_addr);
+
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->t_a1 >> 32), (uint32_t)(ts->t_a1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->r_b1 >> 32), (uint32_t)(ts->r_b1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->t_b1 >> 32), (uint32_t)(ts->t_b1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->r_a1 >> 32), (uint32_t)(ts->r_a1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->t_a2 >> 32), (uint32_t)(ts->t_a2));
+    printf("%" PRIu32 ":%" PRIu32 " ", (uint32_t)(ts->r_b2 >> 32), (uint32_t)(ts->r_b2));
 
     printf("\n");
 }
 
 
-// WARNING might run into timing problems when using standard serial output. Use RTT if available.
-void print_tdoa_timestamps(struct mtm_pas_tdoa *ts) {
+// WARNING might run into timing problems when using standard serial output. Use
+// RTT if available.
 #if WITH_PASSIVE_TDOA
+void print_tdoa_timestamps(struct mtm_pas_tdoa *ts) {
     printf("tdoa, ");
+
     // Assuming the format of printing the timestamps is similar to the debug_output_ds_twr_timestamps function
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.t_a1 >> 32), (uint32_t)(ts->ds_ts.t_a1));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.r_b1 >> 32), (uint32_t)(ts->ds_ts.r_b1));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.t_b1 >> 32), (uint32_t)(ts->ds_ts.t_b1));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.r_a1 >> 32), (uint32_t)(ts->ds_ts.r_a1));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.t_a2 >> 32), (uint32_t)(ts->ds_ts.t_a2));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.r_b2 >> 32), (uint32_t)(ts->ds_ts.r_b2));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.t_b2 >> 32), (uint32_t)(ts->ds_ts.t_b2));
-    printf("%u:%u, ", (uint32_t)(ts->ds_ts.r_a2 >> 32), (uint32_t)(ts->ds_ts.r_a2));
-    printf("%u:%u, ", (uint32_t)(ts->r_l1 >> 32), (uint32_t)(ts->r_l1));
-    printf("%u:%u, ", (uint32_t)(ts->r_l2 >> 32), (uint32_t)(ts->r_l2));
-    printf("%u:%u ", (uint32_t)(ts->r_l3 >> 32), (uint32_t)(ts->r_l3));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.t_a1 >> 32), (uint32_t)(ts->ds_ts.t_a1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.r_b1 >> 32), (uint32_t)(ts->ds_ts.r_b1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.t_b1 >> 32), (uint32_t)(ts->ds_ts.t_b1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.r_a1 >> 32), (uint32_t)(ts->ds_ts.r_a1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.t_a2 >> 32), (uint32_t)(ts->ds_ts.t_a2));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.r_b2 >> 32), (uint32_t)(ts->ds_ts.r_b2));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.t_b2 >> 32), (uint32_t)(ts->ds_ts.t_b2));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->ds_ts.r_a2 >> 32), (uint32_t)(ts->ds_ts.r_a2));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->r_l1 >> 32), (uint32_t)(ts->r_l1));
+    printf("%" PRIu32 ":%" PRIu32 ", ", (uint32_t)(ts->r_l2 >> 32), (uint32_t)(ts->r_l2));
+    printf("%" PRIu32 ":%" PRIu32 " ", (uint32_t)(ts->r_l3 >> 32), (uint32_t)(ts->r_l3));
 
     printf("\n");
-#endif
 }
+#endif
 
 void notify_user_process_new_measurement(struct distance_measurement *measurement) {
   /* Send the PROCESS_EVENT_MSG event asynchronously to
@@ -1156,14 +1150,8 @@ update_neighbor_prop_time(struct tsch_neighbor *n, int32_t prop_time,
   float range = time_to_dist(prop_time);
 
   count++;
-  /* if (!(count % 10)) { */
-      printf("DS, %u, %d\n", n->addr.u8[LINKADDR_SIZE-1],  (int32_t) (range * 10000));
-  /* } */
 
-  /* Send the PROCESS_EVENT_MSG event asynchronously to
-  "tsch_loc_operation", with a pointer to the tsch_neighbor. */
-  /* process_post(&TSCH_PROP_PROCESS, */
-  /*               PROCESS_EVENT_MSG, (void *) n); */
+  printf("DS, %" PRIu8 "," "%" PRId32 "\n", n->addr.u8[LINKADDR_SIZE-1],  (int32_t) (range * 100000));
 }
 
 // define macro define for used floating point type
@@ -1191,14 +1179,6 @@ int32_t correctedExpression(struct ds_twr_ts *ts) {
     return (int32_t)(numerator / denominator);
 }
 
-void print_split_64bit_hex(int64_t value) {
-    uint32_t lower = (uint32_t)(value & 0xFFFFFFFF);         // lower 32 bits
-    uint32_t upper = (uint32_t)((value >> 32) & 0xFFFFFFFF); // upper 32 bits
-
-    printf("0x%08X%08X ", upper, lower);
-}
-
-
 
 float calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
     static PROP_FLOAT relative_drift_offset;
@@ -1210,11 +1190,6 @@ float calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
     own_duration   = interval_correct_overflow(ts->t_a2, ts->t_a1);
     other_duration = interval_correct_overflow(ts->r_b2, ts->r_b1);
 
-
-    /* print_split_64bit_hex(own_duration); */
-    /* print_split_64bit_hex(other_duration); */
-    /* printf("\n"); */
-
     // factor determining whether B's clock runs faster or slower measured from the perspective of our clock
     // a positive factor here means that the clock runs faster than ours
     /* relative_drift_offset = (float)((int64_t)own_duration-(int64_t)other_duration) / (float)(other_duration); */
@@ -1224,14 +1199,8 @@ float calculate_propagation_time_alternative(struct ds_twr_ts *ts) {
     round_duration_a = interval_correct_overflow(ts->r_a1, ts->t_a1);
     delay_duration_b = interval_correct_overflow(ts->t_b1, ts->r_b1);
 
-    /* print_split_64bit_hex(delay_duration_b); */
-    /* printf("\n");     */
-
     /* drift_offset_int = -relative_drift_offset * (float) delay_duration_b; */
     drift_offset_int = round(-relative_drift_offset * (PROP_FLOAT) delay_duration_b);
-
-    /* print_split_64bit_hex(drift_offset_int); */
-    /* printf("\n"); */
 
     /* two_tof_int = (PROP_FLOAT)round_duration_a - (PROP_FLOAT)delay_duration_b + drift_offset_int; */
     two_tof_int = (int64_t)round_duration_a - (int64_t)delay_duration_b + drift_offset_int;

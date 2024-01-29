@@ -54,7 +54,6 @@
 #include <string.h>
 /*---------------------------------------------------------------------------*/
 #include "d3s_dw1000-arch.h"
- /* #include "dw1000.h" *\/
 
 
 #define DEBUG_LEDS 0
@@ -64,6 +63,7 @@
 #else
 #define LEDS_TOGGLE(x)
 #endif
+
 /*---------------------------------------------------------------------------*/
 #define NRFX_SPIM_DEFAULT_CONFIG_2M			     \
   {                                                          \
@@ -318,8 +318,6 @@ d3s_dw1000_arch_init()
     nrf_delay_ms(5);
     dw1000_arch_reset();
   }
-
-  printf("DW1000 ID: %x\n", dwt_readdevid());
 }
 
 

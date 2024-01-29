@@ -1507,12 +1507,12 @@ PT_THREAD(tsch_tx_prop_slot(struct pt *pt, struct rtimer *t))
   /* packet seqno */
   static uint8_t seqno;
   static rtimer_clock_t tx_start_time;
+  static uint8_t step;
 
   // static uint16_t loc_reply_delay;
 
   /* timestamp of transmitted messages */
   static uint64_t timestamp_tx_m1, timestamp_rx_m2, timestamp_tx_m3;
-  static uint8_t step = 0;
 
   seqno = 20;
 
@@ -1810,10 +1810,11 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
   static uint8_t packet_len;
 
   static uint8_t mac_tx_status;
+  static uint8_t step;
 
   /* timestamp of transmitted messages */
   static uint64_t timestamp_rx_m1, timestamp_tx_m2, timestamp_rx_m3;
-  // static uint16_t loc_reply_delay;
+
 
   PT_BEGIN(pt);
   TSCH_DEBUG_RX_EVENT();
@@ -1825,7 +1826,6 @@ PT_THREAD(tsch_rx_prop_slot(struct pt *pt, struct rtimer *t))
     static rtimer_clock_t expected_rx_time;
     static rtimer_clock_t packet_duration;
     uint8_t packet_seen, previews_packet_len;
-    uint8_t step = 0;
 
     expected_rx_time = current_slot_start + tsch_timing[tsch_ts_loc_tx_offset];
     /* Default start time: expected Rx time */
@@ -2090,9 +2090,6 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
    *
    **/
 
-  /* tx status */
-  static uint8_t mac_tx_status = MAC_TX_ERR;
-
   static uint8_t mac_status;
 
   PT_BEGIN(pt);
@@ -2231,11 +2228,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
    *
    **/
 
-  /* tx status */
-  static uint8_t mac_tx_status = MAC_TX_ERR;
-  static uint8_t mac_status;
-  static struct tsch_neighbor *neighbor;
-
   PT_BEGIN(pt);
 
   TSCH_DEBUG_TX_EVENT();
@@ -2245,9 +2237,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   static uint8_t packet_buf[TSCH_PACKET_MAX_LEN];
   static uint8_t packet_len;
   /* static uint8_t seqno; */
-
-  static rtimer_clock_t expected_rx_time, rx_start_time;
-  static int32_t estimated_drift;
 
 #if MTM_SLOT_DURATIONS_EVAL
   static rtimer_clock_t slot_start_time, eval_rx_start_time, eval_rx_end_time, prop_handling_end_time;
@@ -2265,8 +2254,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
     slot_start_time = RTIMER_NOW();
 #endif
 
-
-  expected_rx_time = current_slot_start + tsch_timing[tsch_ts_loc_rx_offset];
 
   /* TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen"); */
   TSCH_WAIT(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen");
@@ -2298,7 +2285,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
       _PRINTF("mtm missed\n");
       mtm_no_frame_detected++;
   } else {
-      rx_start_time = RTIMER_NOW() - RADIO_DELAY_BEFORE_DETECT;
       TOGGLE_DEBUG_GPIO();
 
       BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.pending_packet(),
@@ -2334,12 +2320,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
               frame802154_check_dest_panid(&frame) &&
               frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
 
-#if TSCH_RESYNC_WITH_SFD_TIMESTAMPS
-          /* At the end of the reception, get an more accurate estimate of SFD arrival time */
-          NETSTACK_RADIO.get_object(RADIO_PARAM_LAST_PACKET_TIMESTAMP, &rx_start_time, sizeof(rtimer_clock_t));
-#endif
-
-          // Ranging Related Management
           num_rx_timestamps = 0;
           rx_timestamps = NULL;
 

@@ -88,7 +88,7 @@ struct distance_measurement {
      */
     ranging_addr_t addr_A;
     ranging_addr_t addr_B;
-    
+
     float time;
     int32_t freq_offset;
 };
@@ -108,7 +108,7 @@ struct mtm_pas_tdoa
     // For internal mangement we will identify with node A the node that initiated a transfer
     // and with node B the responder. Off course both nodes take either role, but
     // to not mix up the timestamps we will always use the same notation.
-    ranging_addr_t A_addr; 
+    ranging_addr_t A_addr;
     ranging_addr_t B_addr;
 
     clock_time_t last_observed;
@@ -138,7 +138,7 @@ struct mtm_neighbor {
 
     ranging_addr_t neighbor_addr;
     struct ds_twr_ts ts;
-    
+
     struct distance_measurement last_measurement;
 
     enum mtm_neighbor_type type;
@@ -157,17 +157,17 @@ void add_mtm_reception_timestamp(
     ranging_addr_t neighbor_addr,
     struct tsch_asn_t *asn,
     uint8_t timeslot,
-    
-    uint64_t rx_timestamp_A,    
+
+    uint64_t rx_timestamp_A,
     uint64_t tx_timestamp_B,
-    
+
     struct mtm_packet_timestamp *rx_timestamps,
     uint8_t num_rx_timestamps
 );
 
 void add_mtm_transmission_timestamp(struct tsch_asn_t *asn, uint64_t tx_timestamp);
 void add_to_direct_observed_rx_to_queue(uint64_t rx_timestamp, uint8_t neighbor, uint8_t timeslot_offset);
-void mtm_set_round_slots(uint8_t timeslot_begin, uint8_t timeslot_end); // begin and end are inclusive 
+void mtm_set_round_slots(uint8_t timeslot_begin, uint8_t timeslot_end); // begin and end are inclusive
 void mtm_slot_end_handler(uint16_t timeslot);
 void set_mtm_tx_slot(uint8_t timeslot);
 void mtm_reset_rx_queue();
@@ -203,7 +203,7 @@ tsch_packet_parse_multiranging_packet(
     struct mtm_packet_timestamp **rx_timestamps,
     uint8_t *num_timestamps
     );
-    
+
 #endif // TSCH_MTM_LOCALISATION
 /********** Functions *********/
 

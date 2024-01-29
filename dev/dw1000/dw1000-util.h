@@ -40,7 +40,7 @@
 
 #ifndef __DW1000_UTIL_H__
 #define __DW1000_UTIL_H__
- 
+
 #include "contiki.h"
 #include <inttypes.h>
 
@@ -72,7 +72,7 @@ void print_sys_state(uint64_t sys_state);
 void print_sys_status(uint64_t sys_status);
 
 unsigned long
-theorical_transmission_approx(uint16_t preamble_lenght, uint16_t data_rate, 
+approximate_dw1000_transmission_time(uint16_t preamble_lenght, uint16_t data_rate,
                               uint8_t prf, uint32_t data_lenght);
 unsigned long
 theorical_transmission_payload(uint16_t data_rate, uint32_t data_lenght);
@@ -80,8 +80,8 @@ theorical_transmission_payload(uint16_t data_rate, uint32_t data_lenght);
 rtimer_clock_t microseconds_to_clock_ticks(int duration);
 int16_t clock_ticks_to_microsecond(rtimer_clock_t clock_ticks);
 
-int32_t compute_ASTWR_prop_time(int32_t initiator_roundtrip, 
-			int32_t initiator_reply, int32_t replier_roundtrip, 
+int32_t compute_ASTWR_prop_time(int32_t initiator_roundtrip,
+			int32_t initiator_reply, int32_t replier_roundtrip,
 			int32_t replier_reply);
 
 #endif /* __DW1000_UTIL_H__ */

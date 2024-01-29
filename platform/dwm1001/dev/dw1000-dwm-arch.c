@@ -72,7 +72,7 @@ void dw1000_arch_init()
   NETSTACK_RADIO.set_object(RADIO_LOC_ANTENNA_DELAY_PRF_64, &antenna_delay_prf_tag, sizeof(uint16_t));
   NETSTACK_RADIO.set_object(RADIO_LOC_ANTENNA_DELAY_PRF_16, &antenna_delay_prf_tag, sizeof(uint16_t));
 #endif
-  
+
   /* Performe a wake up in case of the node was in deepsleept before being restarted */
   NETSTACK_RADIO.set_value(RADIO_SLEEP_STATE, RADIO_REQUEST_WAKEUP);
   dw1000_us_delay(4000);
@@ -121,7 +121,7 @@ void dw1000_arch_init_deepsleep(void){
  **/
 void dw1000_arch_wake_up(dw1000_pin_state state) {
     if(state == DW1000_PIN_ENABLE) {
-        nrf_gpio_pin_clear(DW1000_SPI_CS_PIN);        
+        nrf_gpio_pin_clear(DW1000_SPI_CS_PIN);
     } else {
         nrf_gpio_pin_set(DW1000_SPI_CS_PIN);
     }
