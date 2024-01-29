@@ -72,8 +72,14 @@
 #if WITH_DWM_DEBUG_GPIO
 #include "debug-gpio.h"
 #define TOGGLE_DEBUG_GPIO() debug_toggle_pin();
+#define QUICK_TOGGLE_GPIO() do { \
+  TOGGLE_DEBUG_GPIO(); \
+  TOGGLE_DEBUG_GPIO(); \
+} while(0)
+
 #else
 #define TOGGLE_DEBUG_GPIO()
+#define QUICK_TOGGLE_GPIO()
 #endif
 
 #if CONTIKI_TARGET_COOJA || CONTIKI_TARGET_COOJA_IP64
@@ -2092,6 +2098,8 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
   PT_BEGIN(pt);
 
   TSCH_DEBUG_TX_EVENT();
+  QUICK_TOGGLE_GPIO();
+
 
   /* packet constructino */
   static uint8_t packet_buf[TSCH_PACKET_MAX_LEN];
@@ -2145,7 +2153,11 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
       prepare_end_time = RTIMER_NOW();
 #endif
 
+      QUICK_TOGGLE_GPIO();
+
     TSCH_WAIT(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_tx_offset] - RADIO_DELAY_BEFORE_TX, "msg1TX");
+
+    TOGGLE_DEBUG_GPIO();
 
     TSCH_DEBUG_TX_EVENT();
 
@@ -2157,6 +2169,8 @@ PT_THREAD(tsch_mtm_tx_slot(struct pt *pt, struct rtimer *t))
     tx_end_time = RTIMER_NOW();
 #endif
     tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
+
+    TOGGLE_DEBUG_GPIO();
 
     if(mac_status == RADIO_TX_OK) {
       // pass asn and timestamp
@@ -2225,6 +2239,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   PT_BEGIN(pt);
 
   TSCH_DEBUG_TX_EVENT();
+  QUICK_TOGGLE_GPIO();
 
   /* packet constructino */
   static uint8_t packet_buf[TSCH_PACKET_MAX_LEN];
@@ -2250,6 +2265,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
     slot_start_time = RTIMER_NOW();
 #endif
 
+
   expected_rx_time = current_slot_start + tsch_timing[tsch_ts_loc_rx_offset];
 
   /* TSCH_SCHEDULE_AND_YIELD(pt, t, current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] - RADIO_DELAY_BEFORE_RX, "RxBeforeListen"); */
@@ -2257,6 +2273,7 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
   /* write_byte('r'); */
 
 
+  TOGGLE_DEBUG_GPIO();
 
   tsch_radio_on(TSCH_RADIO_CMD_ON_WITHIN_TIMESLOT);
 
@@ -2267,6 +2284,8 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
       BUSYWAIT_UNTIL_ABS((packet_seen = NETSTACK_RADIO.receiving_packet()),
           current_slot_start, tsch_timing[tsch_ts_loc_rx_offset] + tsch_timing[tsch_ts_loc_rx_wait] + RADIO_DELAY_BEFORE_DETECT);
   }
+
+  TOGGLE_DEBUG_GPIO();
 
 #if MTM_SLOT_DURATIONS_EVAL
   eval_rx_start_time = RTIMER_NOW();
@@ -2280,11 +2299,14 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
       mtm_no_frame_detected++;
   } else {
       rx_start_time = RTIMER_NOW() - RADIO_DELAY_BEFORE_DETECT;
+      TOGGLE_DEBUG_GPIO();
 
       BUSYWAIT_UNTIL_ABS(NETSTACK_RADIO.pending_packet(),
           current_slot_start, tsch_timing[tsch_ts_rx_offset] + tsch_timing[tsch_ts_rx_wait] + tsch_timing[tsch_ts_max_tx]);
 
       tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
+      TOGGLE_DEBUG_GPIO();
+
 
       if(NETSTACK_RADIO.pending_packet()) {
           static frame802154_t frame;
@@ -2316,21 +2338,6 @@ PT_THREAD(tsch_mtm_rx_slot(struct pt *pt, struct rtimer *t))
           /* At the end of the reception, get an more accurate estimate of SFD arrival time */
           NETSTACK_RADIO.get_object(RADIO_PARAM_LAST_PACKET_TIMESTAMP, &rx_start_time, sizeof(rtimer_clock_t));
 #endif
-
-          /* estimated_drift = RTIMER_CLOCK_DIFF(expected_rx_time, rx_start_time); */
-          /* struct tsch_neighbor *n = tsch_queue_get_nbr(&source_address); */
-          /* if(n != NULL && n->is_time_source) { */
-          /*     printf("rs\n"); */
-          /*     int32_t since_last_timesync = TSCH_ASN_DIFF(tsch_current_asn, last_sync_asn); */
-          /*     /\* Keep track of last sync time *\/ */
-          /*     last_sync_asn = tsch_current_asn; */
-          /*     /\* Save estimated drift *\/ */
-          /*     drift_correction = -estimated_drift; */
-          /*     is_drift_correction_used = 1; */
-          /*     tsch_timesync_update(n, since_last_timesync, -estimated_drift); */
-          /*     tsch_schedule_keepalive(); */
-          /* } */
-
 
           // Ranging Related Management
           num_rx_timestamps = 0;

@@ -704,6 +704,7 @@ void debug_output_ds_twr_timestamps(struct ds_twr_ts *ts, ranging_addr_t neighbo
 
 // WARNING might run into timing problems when using standard serial output. Use RTT if available.
 void print_tdoa_timestamps(struct mtm_pas_tdoa *ts) {
+#if WITH_PASSIVE_TDOA
     printf("tdoa, ");
     // Assuming the format of printing the timestamps is similar to the debug_output_ds_twr_timestamps function
     printf("%u:%u, ", (uint32_t)(ts->ds_ts.t_a1 >> 32), (uint32_t)(ts->ds_ts.t_a1));
@@ -719,6 +720,7 @@ void print_tdoa_timestamps(struct mtm_pas_tdoa *ts) {
     printf("%u:%u ", (uint32_t)(ts->r_l3 >> 32), (uint32_t)(ts->r_l3));
 
     printf("\n");
+#endif
 }
 
 void notify_user_process_new_measurement(struct distance_measurement *measurement) {
@@ -915,9 +917,8 @@ int tsch_packet_create_multiranging_packet(
   memcpy(&buf[curr_len], &checksum, sizeof(uint32_t));
   curr_len = curr_len + sizeof(uint32_t);
 
-
 #if WITH_DEV_FILL_MAC_PACKET
-  return PACKETBUF_SIZE;
+  return 120;
 #endif
 
 
