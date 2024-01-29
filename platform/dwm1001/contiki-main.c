@@ -35,6 +35,7 @@
  */
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 /*---------------------------------------------------------------------------*/
 #include "contiki.h"
 #include "reset_reason.h"
@@ -71,7 +72,7 @@
 #include "uip-debug.h"
 #undef PRINTF // our PRINTF macro conflicts with the one defined in uip-debug.h
 #include "net/ipv6/uip-ds6.h"
-#endif //NETSTACK_CONF_WITH_IPV6
+#endif // NETSTACK_CONF_WITH_IPV6
 
 
 #define DEBUG 1
@@ -168,8 +169,8 @@ configure_addresses(void)
   uint32_t deviceaddr1 =  NRF_FICR->DEVICEADDR[0];
   uint32_t deviceaddr2 =  NRF_FICR->DEVICEADDR[1];
 
-  uint8_t ficraddr[6];  
-  
+  uint8_t ficraddr[6];
+
   ficraddr[0] = (deviceaddr1 >> 0)  & 0xff;
   ficraddr[1] = (deviceaddr1 >> 8)  & 0xff;
   ficraddr[2] = (deviceaddr1 >> 16) & 0xff;
@@ -177,7 +178,7 @@ configure_addresses(void)
   ficraddr[4] = (deviceaddr2 >> 0)  & 0xff;
   ficraddr[5] = get_high_byte_for_dev1addr(deviceaddr1);
   dwm1001_ficr2uwb_addr(ficraddr, ext_addr);
-  
+
 #elif (DWM1001_USE_BT_ADDR_FOR_UWB && SOFTDEVICE_PRESENT)
   printf("Using BT address for UWB\n");
 
@@ -190,7 +191,7 @@ configure_addresses(void)
   printf("Using FICR address for UWB\n");
   // read DEVICEID and DEVICEADDR registers from 52832 chip
   uint32_t deviceaddr1 =  NRF_FICR->DEVICEADDR[0];
-  uint32_t deviceaddr2 =  NRF_FICR->DEVICEADDR[1];  
+  uint32_t deviceaddr2 =  NRF_FICR->DEVICEADDR[1];
 
   uint8_t ficraddr[6];
 
@@ -202,8 +203,8 @@ configure_addresses(void)
   ficraddr[4] = (deviceaddr2 >> 0) & 0xff;
   ficraddr[5] = (deviceaddr2 >> 8) & 0xff;
 
-  printf("devaddr1 %u\n", deviceaddr1);
-  
+  printf("devaddr1 %" PRIu32 "\n", deviceaddr1);
+
     /* Use the 6-byte device address as the UWB address with a 2-byte prefix */
   dwm1001_ficr2uwb_addr(ficraddr, ext_addr);
   // initialize short address only for now
